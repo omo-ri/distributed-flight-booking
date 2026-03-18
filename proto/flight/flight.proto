@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package flight;
+
+option go_package = "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight";
+
+import "google/protobuf/timestamp.proto";
+
+// ========== Enums ==========
+
+enum FlightStatus {
+  FLIGHT_STATUS_UNSPECIFIED = 0;
+  FLIGHT_STATUS_SCHEDULED   = 1;
+  FLIGHT_STATUS_DEPARTED    = 2;
+  FLIGHT_STATUS_CANCELLED   = 3;
+  FLIGHT_STATUS_COMPLETED   = 4;
+}
+
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  RESERVATION_STATUS_ACTIVE     = 1;
+  RESERVATION_STATUS_RELEASED   = 2;
+  RESERVATION_STATUS_EXPIRED    = 3;
+}
+
+// ========== Messages ==========
+
+message Flight {
+  string                    id              = 1;  // UUID
+  string                    flight_number   = 2;
+  string                    airline         = 3;
+  string                    origin          = 4;
+  string                    destination     = 5;
+  google.protobuf.Timestamp departure_time  = 6;
+  google.protobuf.Timestamp arrival_time    = 7;
+  int32                     total_seats     = 8;
+  int32                     available_seats = 9;
+  int64                     price           = 10; // in minor units (kopecks/cents)
+  FlightStatus              status          = 11;
+}
+
+message SeatReservation {
+  string                    id         = 1;  // UUID
+  string                    flight_id  = 2;  // UUID
+  string                    booking_id = 3;  // UUID
+  int32                     seat_count = 4;
+  ReservationStatus         status     = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ========== SearchFlights ==========
+
+message SearchFlightsRequest {
+  string origin      = 1;
+  string destination = 2;
+  string date        = 3; // optional, format "2006-01-02"
+}
+
+message SearchFlightsResponse {
+  repeated Flight flights = 1;
+}
+
+// ========== GetFlight ==========
+
+message GetFlightRequest {
+  string id = 1;  // UUID
+}
+
+message GetFlightResponse {
+  Flight flight = 1;
+}
+
+// ========== ReserveSeats ==========
+
+message ReserveSeatsRequest {
+  string flight_id  = 1;  // UUID
+  int32  seat_count = 2;
+  string booking_id = 3;  // UUID, for idempotency
+}
+
+message ReserveSeatsResponse {
+  SeatReservation reservation = 1;
+}
+
+// ========== ReleaseReservation ==========
+
+message ReleaseReservationRequest {
+  string booking_id = 1;  // UUID
+}
+
+message ReleaseReservationResponse {
+  SeatReservation reservation = 1;
+}
+
+// ========== Service ==========
+
+service FlightService {
+  rpc SearchFlights      (SearchFlightsRequest)      returns (SearchFlightsResponse);
+  rpc GetFlight          (GetFlightRequest)           returns (GetFlightResponse);
+  rpc ReserveSeats       (ReserveSeatsRequest)        returns (ReserveSeatsResponse);
+  rpc ReleaseReservation (ReleaseReservationRequest)  returns (ReleaseReservationResponse);
+}
