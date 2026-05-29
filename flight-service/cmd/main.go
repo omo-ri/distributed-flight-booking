@@ -5,16 +5,19 @@ import (
 	"errors"
 	"log"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 
 	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/auth"
 	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/cache"
 	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/handler"
+	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/metrics"
 	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/repository"
 	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/service"
 	pb "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight"
@@ -77,9 +80,23 @@ func main() {
 	}
 
 	srv := grpc.NewServer(
-		grpc.UnaryInterceptor(auth.UnaryInterceptor(apiKey)),
+		grpc.ChainUnaryInterceptor(
+			metrics.UnaryServerInterceptor(),
+			auth.UnaryInterceptor(apiKey),
+		),
 	)
 	pb.RegisterFlightServiceServer(srv, h)
+
+	// Metrics HTTP server (separate port — gRPC and HTTP can't share a listener here).
+	metricsPort := envOrDefault("METRICS_PORT", "9091")
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		log.Printf("flight-service metrics listening on :%s", metricsPort)
+		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil {
+			log.Printf("metrics server stopped: %v", err)
+		}
+	}()
 
 	log.Printf("flight-service listening on :%s", port)
 	if err := srv.Serve(lis); err != nil {

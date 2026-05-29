@@ -83,6 +83,7 @@ services:
     build: ./flight-service
     environment:
       GRPC_PORT: "50051"
+      METRICS_PORT: "9091"
       DB_HOST: flight-db
       DB_PORT: "5432"
       DB_USER: flight
@@ -93,6 +94,7 @@ services:
       AUTH_API_KEY: "super-secret-key"  # 题6: 服务间认证
     ports:
       - "50051:50051"
+      - "9091:9091"
     depends_on:
       flight-db:
         condition: service_healthy
@@ -124,6 +126,20 @@ services:
         condition: service_healthy
       flight-service:
         condition: service_started
+
+  # ---- Prometheus (题4) ----
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=1h'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - booking-service
+      - flight-service
 
 volumes:
   flight-db-data:

@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: booking-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['booking-service:8080']
+        labels:
+          service: booking-service
+
+  - job_name: flight-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['flight-service:9091']
+        labels:
+          service: flight-service
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

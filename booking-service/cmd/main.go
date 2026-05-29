@@ -13,11 +13,13 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/omo-ri/coa-hw/hw3/booking-service/api"
 	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/circuitbreaker"
 	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/grpcclient"
 	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/handler"
+	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/metrics"
 	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/repository"
 	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/service"
 )
@@ -93,6 +95,10 @@ func main() {
 
 	// Recovery middleware
 	e.Use(middleware.Recover())
+
+	// Prometheus metrics middleware + endpoint
+	e.Use(metrics.Middleware())
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	// Register OpenAPI routes
 	api.RegisterHandlers(e, h)
