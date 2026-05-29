@@ -1,0 +1,15 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'service']
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: default
+    # No external notifier wired up — for the homework demo we only need
+    # the alert to reach Alertmanager and show up as "firing" in its UI.
+    # In production this would point to Slack / PagerDuty / email.

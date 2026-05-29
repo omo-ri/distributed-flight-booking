@@ -1,0 +1,43 @@
+groups:
+  - name: hw3-service-slo
+    interval: 15s
+    rules:
+      - alert: HighErrorRate
+        # error_rate over 5m > 5%  (Failure threshold for the API availability SLI)
+        expr: |
+          sum by (service) (rate(http_request_errors_total[5m]))
+          / clamp_min(sum by (service) (rate(http_requests_total[5m])), 1e-9)
+          > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          sli: api_availability
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "Error rate {{ $value | humanizePercentage }} > 5% on {{ $labels.service }} for the last 5m (SLI failure threshold)."
+
+      - alert: HighLatencyP95
+        # p95 over 5m > 1s   (Failure threshold for the API latency SLI)
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+          ) > 1
+        for: 2m
+        labels:
+          severity: warning
+          sli: api_latency
+        annotations:
+          summary: "High p95 latency on {{ $labels.service }}"
+          description: "p95 latency {{ $value }}s > 1s on {{ $labels.service }} for the last 5m (SLI failure threshold)."
+
+      - alert: ServiceDown
+        # Any scrape target staying down for over 1m.
+        expr: up{job=~"booking-service|flight-service"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          sli: availability
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Prometheus has been unable to scrape {{ $labels.job }} for over 1 minute."

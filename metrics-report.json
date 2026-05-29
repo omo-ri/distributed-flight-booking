@@ -1,0 +1,21 @@
+{
+  "prometheus_url": "http://localhost:9090",
+  "queried_at": 1780066436,
+  "measurements": {
+    "error_rate": 0.0,
+    "latency_p95_seconds": 0.004858325159391858
+  },
+  "slo": {
+    "error_rate": 0.01,
+    "latency_p95_seconds": 0.5
+  },
+  "failure_threshold": {
+    "error_rate": 0.05,
+    "latency_p95_seconds": 1.0
+  },
+  "verdicts": {
+    "error_rate": "OK (0.0000% < SLO 1%)",
+    "latency_p95_seconds": "OK (4.9ms < SLO 500ms)"
+  },
+  "status": "PASS"
+}

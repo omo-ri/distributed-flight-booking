@@ -60,6 +60,7 @@ docker compose down -v                 # 收摊
 | 50051 | flight-service gRPC |
 | 9091 | flight-service `/metrics` |
 | 9090 | Prometheus |
+| 9093 | Alertmanager |
 | 3000 | Grafana（匿名 Viewer，免登录直接看；admin/admin 可编辑） |
 | 5433 / 5434 | flight-db / booking-db |
 
@@ -76,8 +77,42 @@ docker compose down -v                 # 收摊
 | **5** Grafana 服务仪表盘 | 1 | `grafana/dashboards/services.json`，4 panel：throughput / p50-p95-p99 / error rate / status 分布；provisioning 自动加载 |
 | **6** Grafana 基础设施仪表盘 | 1 | `grafana/dashboards/infrastructure.json`，7 panel：postgres 连接 / 事务速率 / 缓存命中率 / Redis ops/内存/客户端；用 postgres_exporter ×2 + redis_exporter |
 | **7** 负载测试入 CI | 1 | `k6/script.js`，10 VU × 30s，thresholds `p95<500ms` + `error<1%`；CI 跑 k6 容器，summary 上传 artifact |
+| **8** PromQL 阈值校验入 CI | 1 | `scripts/verify_metrics.py`，k6 后查 Prometheus API，断言 SLI 阈值，违反则 exit 1；`metrics-report.json` 上传 artifact |
+| **9** Alert rules + Alertmanager | 1 | `prometheus/alerts.yml` 3 条规则；Alertmanager 容器；`scripts/demo_alerts.sh` 演示触发 |
+| **10** SLI / SLO | 1 | 下方 SLI 表，PromQL 实测，已接入 CI（题 8）和 alert（题 9） |
 
-> 题 8–10（CI 中 PromQL 阈值校验 / Alert rules / SLI-SLO）暂未做。
+---
+
+## SLI / SLO（题 10）
+
+为整个系统定义了 3 个 SLI，全部基于 Prometheus 实时指标计算（非硬编码），并接入了**CI 校验**与**Prometheus 告警**两条防线。
+
+| SLI | PromQL | SLO（系统正常） | 失败阈值（系统视为故障） | 接入点 |
+|---|---|---|---|---|
+| **API 可用性**（成功请求占比） | `1 - sum(rate(http_request_errors_total{service="booking-service"}[5m])) / sum(rate(http_requests_total{service="booking-service"}[5m]))` | > 99% | < 95% | `verify_metrics.py` + alert `HighErrorRate`（> 5% 持续 2m） |
+| **API 延迟 p95** | `histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{service="booking-service"}[5m])))` | < 500ms | > 1000ms | `verify_metrics.py` + alert `HighLatencyP95`（> 1s 持续 2m） |
+| **服务存活** | `up{job=~"booking-service\|flight-service"}` | = 1 | = 0 持续 1 分钟 | alert `ServiceDown` |
+
+### 阈值是怎么定的
+
+- **API 可用性 SLO 99% / 失败 95%**：现在 baseline 是 100%（k6 跑 3700+ 请求 0 错），SLO 留 1% 余量给偶发尾部错误；5% 失败阈值取自常见 SRE 经验值（连续 2 分钟 > 5% 通常意味着真出事而不是抖动）
+- **延迟 p95 SLO 500ms / 失败 1000ms**：booking-service 链路是 HTTP → gRPC → 两次 PG，本地 baseline 是 ~5ms，留 100× 余量给负载/网络抖动；1000ms 是用户体感「卡」的常见门槛
+- **服务存活 1m**：单个 scrape miss（5s）可能是网络抖动，连续 1 分钟（12 次 scrape）miss 几乎可以确定是进程挂了
+
+### 怎么演示这些 SLI/SLO 真的「起作用」
+
+```bash
+# 1. CI 防线：跑 verify_metrics.py，违反阈值会 exit 1
+PROM_URL=http://localhost:9090 python3 scripts/verify_metrics.py
+# 看 metrics-report.json 里的 verdicts 和 status
+
+# 2. Alert 防线：触发 ServiceDown
+./scripts/demo_alerts.sh service-down
+# 等 ~75 秒，然后：
+./scripts/demo_alerts.sh status               # 命令行看
+# 或浏览器：http://localhost:9093（Alertmanager UI，看 firing 列表）
+./scripts/demo_alerts.sh restore              # 恢复
+```
 
 ---
 
