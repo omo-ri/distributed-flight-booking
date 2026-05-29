@@ -20,3 +20,22 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
+
+  # ---- Infrastructure (题6) ----
+  - job_name: postgres-booking
+    static_configs:
+      - targets: ['postgres-exporter-booking:9187']
+        labels:
+          db: booking_db
+
+  - job_name: postgres-flight
+    static_configs:
+      - targets: ['postgres-exporter-flight:9187']
+        labels:
+          db: flight_db
+
+  - job_name: redis
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          instance: redis-master

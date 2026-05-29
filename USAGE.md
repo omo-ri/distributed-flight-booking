@@ -181,7 +181,7 @@ curl -X POST http://localhost:8080/bookings/{booking_id}/cancel
 
 ## 测试
 
-15 个自动化测试用例，覆盖全部 API 端点：
+**16 个**自动化测试用例：
 
 | 分组 | 用例数 | 内容 |
 |------|--------|------|
@@ -189,11 +189,34 @@ curl -X POST http://localhost:8080/bookings/{booking_id}/cancel
 | 预订创建 | 4 | 正常创建、座位扣减验证、座位不足 409、航班不存在 404 |
 | 预订查询 | 3 | 获取详情、列表查询、404 |
 | 预订取消 | 3 | 正常取消、重复取消 409、座位归还验证 |
+| **E2E + DB 断言** | **1** | **直连两个 PG，全流程验 booking 行 + seat_reservation 行 + available_seats** |
 
 ```bash
-pip install pytest requests
-make test        # 仅测试
-make run         # 启动 + 测试一条龙
+make deps          # pip install -r tests/requirements.txt
+make test          # 仅测试（栈已启动）
+make run           # 启动 + 等就绪 + 测试 一条龙
+```
+
+## 观测性（hw7 新增）
+
+启栈后这些端点可用：
+
+| 端点 | 用途 |
+|---|---|
+| <http://localhost:8080/metrics> | booking-service Prometheus 指标 |
+| <http://localhost:9091/metrics> | flight-service Prometheus 指标 |
+| <http://localhost:9090> | Prometheus UI（targets、graph、PromQL） |
+| <http://localhost:3000> | Grafana（匿名 Viewer 免登录；admin/admin 可编辑） |
+
+Grafana 两个仪表盘（`hw3` 文件夹下）：
+- `hw3 / Services` — RPS / 延迟百分位 / 错误率 / 状态码分布
+- `hw3 / Infrastructure` — PG 连接 / 事务速率 / 缓存命中率 / Redis 状态
+
+跑一轮 k6 让仪表盘动起来：
+
+```bash
+docker run --rm --network host -v "$PWD/k6:/scripts" -w /scripts \
+  -e BASE_URL=http://localhost:8080 grafana/k6:0.55.0 run script.js
 ```
 
 ## 种子数据

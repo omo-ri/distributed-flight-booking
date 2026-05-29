@@ -1,7 +1,167 @@
-# 第3次课后作业
-## 机票预订系统：gRPC + Redis
+# 第7次课后作业 — CI/CD, Testing & Observability
+
+在第 3 次作业（gRPC + Redis 的航班预订系统）基础上，本次新增 CI 流水线、自动化测试、Prometheus 指标、Grafana 仪表盘、k6 负载测试。
+
+> 第 3 次作业的题目要求与系统设计见本文后半部分，未做改动。
 
 ---
+
+## 系统能干嘛
+
+两个微服务组成的航班预订系统：
+
+```
+浏览器/客户端 ──HTTP──▶  booking-service (:8080)  ──gRPC──▶  flight-service (:50051)
+                              │                                    │
+                          booking-db (5434)                   flight-db (5433)
+                                                                   │
+                                                            Redis Sentinel
+                                                       (master / slave / sentinel)
+```
+
+booking-service 暴露的 REST API（详细 schema 见 `USAGE.md`）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/flights?origin=&destination=&date=` | 按路线搜航班 |
+| GET | `/flights/{id}` | 单个航班详情 |
+| POST | `/bookings` | 创建预订（跨库扣座） |
+| GET | `/bookings/{id}` | 单个预订 |
+| GET | `/bookings?user_id=` | 用户预订列表 |
+| POST | `/bookings/{id}/cancel` | 取消预订（归还座位） |
+| GET | `/metrics` | Prometheus 指标（本次新增） |
+
+flight-service 是纯 gRPC，对外仅暴露 `/metrics` (`:9091`)。
+
+数据库启动时自动加载 3 个种子航班：
+
+| flight_number | 路线 | 座位 | 票价 |
+|---|---|---|---|
+| SU1234 | SVO→LED | 180 | 15000 |
+| SU5678 | SVO→LED | 120 | 12000 |
+| DP402  | VKO→LED | 189 | 8000  |
+
+---
+
+## 一键启动
+
+```bash
+docker compose up --build -d           # 启 12 个容器
+pip install -r tests/requirements.txt  # 第一次需要
+pytest tests/ -v                       # 16 个测试
+docker compose down -v                 # 收摊
+```
+
+启完后这些端口对外开：
+
+| 端口 | 服务 |
+|---|---|
+| 8080 | booking-service REST + `/metrics` |
+| 50051 | flight-service gRPC |
+| 9091 | flight-service `/metrics` |
+| 9090 | Prometheus |
+| 3000 | Grafana（匿名 Viewer，免登录直接看；admin/admin 可编辑） |
+| 5433 / 5434 | flight-db / booking-db |
+
+---
+
+## 本次作业 10 分对照
+
+| 题号 | 分数 | 实现 |
+|---|---|---|
+| **1** CI pipeline | 1 | `.github/workflows/hw3-ci.yml`，4 job：`build` / `unit` / `integration` / `load-test`；按路径过滤到 `hw3/**`，push 和 PR 都触发 |
+| **2** 集成测试 | 1 | `tests/test_api.py`，15 个用例，跨 booking→gRPC→flight→两库 |
+| **3** E2E 测试 | 1 | `tests/test_e2e_db.py`，**直连两个 PG 校验** booking 行 + seat_reservation 行 + available_seats 数值（create → cancel 全流程） |
+| **4** Prometheus + 指标 | 1 | 两服务各自暴露 `http_requests_total` / `http_request_errors_total` / `http_request_duration_seconds`；Prometheus 容器 5s scrape，6 个 target |
+| **5** Grafana 服务仪表盘 | 1 | `grafana/dashboards/services.json`，4 panel：throughput / p50-p95-p99 / error rate / status 分布；provisioning 自动加载 |
+| **6** Grafana 基础设施仪表盘 | 1 | `grafana/dashboards/infrastructure.json`，7 panel：postgres 连接 / 事务速率 / 缓存命中率 / Redis ops/内存/客户端；用 postgres_exporter ×2 + redis_exporter |
+| **7** 负载测试入 CI | 1 | `k6/script.js`，10 VU × 30s，thresholds `p95<500ms` + `error<1%`；CI 跑 k6 容器，summary 上传 artifact |
+
+> 题 8–10（CI 中 PromQL 阈值校验 / Alert rules / SLI-SLO）暂未做。
+
+---
+
+## 怎么验
+
+### 1. 看本地栈状态
+
+```bash
+docker compose ps                 # 12 个容器全 running/healthy
+curl :8080/metrics | head -5      # booking-service 指标
+curl :9091/metrics | head -5      # flight-service 指标
+curl :9090/api/v1/targets | python3 -m json.tool | grep -E '"health"|"job"'
+# 预期：6 个 target 全 "up"（booking/flight/prometheus + postgres-booking/postgres-flight/redis）
+```
+
+### 2. 跑测试
+
+```bash
+pytest tests/ -v
+# 预期：16 passed
+```
+
+### 3. 跑负载
+
+```bash
+docker run --rm --network host -v "$PWD/k6:/scripts" -w /scripts \
+  -e BASE_URL=http://localhost:8080 grafana/k6:0.55.0 run script.js
+# 预期：p95 远低于 500ms，error rate 0%，全部 ✓
+```
+
+### 4. 看 CI
+
+GitHub 仓库 → Actions 标签 → 最新 run。`integration` job 的输出里有：
+- `booking-service ready after X attempts`
+- `targets: {'booking-service': 'up', 'flight-service': 'up', 'prometheus': 'up'}`
+- 末尾 `16 passed`
+
+`load-test` job 的输出里有 `p95 duration_ms` / `error rate` 等汇总，artifact 区可下载 `k6-summary.json`。
+
+---
+
+## Grafana 走查
+
+打开 <http://localhost:3000>，左侧 Dashboards → **hw3** 文件夹下两个面板：
+
+### `hw3 / Services (booking + flight)` — 对应题 5
+
+| Panel | 看什么 | PromQL |
+|---|---|---|
+| Throughput (RPS) by service | 每秒请求数，两服务分线 | `sum by (service) (rate(http_requests_total[1m]))` |
+| Latency percentiles | p50/p95/p99 三档延迟 × 服务 | `histogram_quantile(0.95, sum by (le,service) (rate(http_request_duration_seconds_bucket[1m])))` |
+| Error rate (%) by service | 错误请求占比 | `sum by (service) (rate(http_request_errors_total[1m])) / clamp_min(sum by (service) (rate(http_requests_total[1m])), 1e-9)` |
+| Requests by status | 按状态码堆叠 | `sum by (status) (rate(http_requests_total[1m]))` |
+
+### `hw3 / Infrastructure (PostgreSQL + Redis)` — 对应题 6
+
+| Panel | 看什么 |
+|---|---|
+| Exporter health | 三个 exporter 是否存活，DOWN 时变红 |
+| PG Active connections by db | 两个库各自的活跃连接数 |
+| PG Transaction rate | commit / rollback 速率（rollback 飙升 = 业务在抛错） |
+| PG Cache hit ratio | 缓冲池命中率（健康值接近 1） |
+| Redis Ops/sec | Redis 命令处理速率 |
+| Redis Memory used | 内存使用 + 上限 |
+| Redis Connected clients | 活跃客户端数 |
+
+**让仪表盘动起来**：另开一个终端跑一轮 k6（见上一节），右上角时间窗调到 Last 5 minutes，曲线 5s 一刷自动出现。
+
+---
+
+## 答辩可能被问的话术
+
+| 问 | 答 |
+|---|---|
+| 你 CI 跑了什么？ | 4 个 job。build 和 unit 并行验 Go 编译 + 单测；integration 起完整栈、用 `/metrics` 做就绪探针、查 Prometheus API 断言 target 真的 `up`、跑 16 个 pytest（含 1 个直连两库的 E2E）。load-test 起栈跑 k6，thresholds 违反就 exit 1。|
+| 为什么 flight-service 的 `/metrics` 在另一个端口？ | gRPC 和 HTTP 不能共用 listener，所以单开一个 `:9091` 的 HTTP server 暴露 promhttp handler。|
+| 这三个指标 label 怎么选的？ | endpoint 用 Echo 的 route pattern（`/bookings/:id`）而非真实 URL，避免高基数。gRPC 端用 `info.FullMethod`。error_type 在 HTTP 侧分 client_error / server_error，gRPC 端用 gRPC code。|
+| p95 延迟怎么算？ | `histogram_quantile(0.95, ...)` 作用在 histogram 桶的 5s 累积速率上，所以是滚动 1m 窗口的 p95。|
+| 缓存命中率为啥用 rate 而不是 counter 直接除？ | counter 是从启动到现在的累积，瞬时除会被历史平均；rate 是过去 5min 的，能反映当前状态。|
+| k6 为啥 create+cancel 配对？ | 否则 30s 内会持续吃座位，跑几次就 RESOURCE_EXHAUSTED；配对让总库存中性，测试可重复跑。|
+
+---
+
+
 
 ## 🎯 目标
 

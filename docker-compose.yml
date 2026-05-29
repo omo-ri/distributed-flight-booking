@@ -127,6 +127,31 @@ services:
       flight-service:
         condition: service_started
 
+  # ---- Infrastructure exporters (题6) ----
+  postgres-exporter-booking:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://booking:booking_pass@booking-db:5432/booking_db?sslmode=disable"
+    depends_on:
+      booking-db:
+        condition: service_healthy
+
+  postgres-exporter-flight:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: "postgresql://flight:flight_pass@flight-db:5432/flight_db?sslmode=disable"
+    depends_on:
+      flight-db:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    environment:
+      REDIS_ADDR: redis://redis-master:6379
+    depends_on:
+      redis-master:
+        condition: service_healthy
+
   # ---- Prometheus (题4) ----
   prometheus:
     image: prom/prometheus:v2.55.0
@@ -140,6 +165,23 @@ services:
     depends_on:
       - booking-service
       - flight-service
+
+  # ---- Grafana (题5, 题6) ----
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   flight-db-data:

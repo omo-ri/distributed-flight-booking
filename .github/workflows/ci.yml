@@ -151,3 +151,81 @@ jobs:
           name: docker-logs
           path: hw3/docker-logs.txt
           if-no-files-found: ignore
+
+  load-test:
+    name: Load test (k6)
+    runs-on: ubuntu-latest
+    needs: [build, unit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack
+        run: docker compose up --build -d
+
+      - name: Wait for booking-service
+        run: |
+          set -e
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/metrics > /dev/null; then
+              echo "booking-service ready after ${i} attempts"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "booking-service did not come up"
+              docker compose ps
+              docker compose logs booking-service
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Run k6
+        run: |
+          mkdir -p k6/out
+          docker run --rm --network host \
+            -v "$PWD/k6:/scripts" \
+            -w /scripts \
+            -e BASE_URL=http://localhost:8080 \
+            grafana/k6:0.55.0 run \
+              --summary-export=out/summary.json \
+              script.js
+
+      - name: Show k6 summary
+        if: always()
+        run: |
+          if [ -f k6/out/summary.json ]; then
+            python3 -c "
+          import json
+          s = json.load(open('k6/out/summary.json'))
+          m = s['metrics']
+          print('p95 duration_ms:', round(m['http_req_duration']['p(95)'], 1))
+          print('p99 duration_ms:', round(m['http_req_duration']['p(99)'], 1))
+          print('error rate:',      round(m['http_req_failed']['value'] * 100, 3), '%')
+          print('checks rate:',     round(m['checks']['value'] * 100, 3), '%')
+          print('requests total:',  int(m['http_reqs']['count']))
+          "
+          fi
+
+      - name: Capture container logs
+        if: always()
+        run: docker compose logs --no-color > docker-logs.txt 2>&1 || true
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: hw3/k6/out/summary.json
+          if-no-files-found: ignore
+
+      - name: Upload load-test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-docker-logs
+          path: hw3/docker-logs.txt
+          if-no-files-found: ignore
