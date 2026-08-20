@@ -29,8 +29,25 @@ Conventional Commits：
 <可选脚注：Refs: D-01>
 ```
 
-type：`feat` `fix` `docs` `refactor` `test` `perf` `build` `ci` `chore`
-scope：`booking` `flight` `k8s` `ci` `obs`（可观测性）`docs` `chaos`
+**type 是封闭集合**：`feat` `fix` `docs` `refactor` `test` `perf` `build` `ci` `chore`
+
+**scope 必填，但取值开放。** 写"这次改动影响的范围"，让人在 `git log --oneline` 里一眼看出该不该细看这条。
+
+不维护固定枚举 —— 项目会长出新的部分（`k8s`、`loki`、`rollout`、`chaos`……），每次都要先改规范才能提交，这个摩擦只会导致规范被绕过。常用值作参考：
+
+```
+booking  flight  proto  cache  cb        服务与组件
+obs  alerts  slo  grafana                可观测性
+ci  build  deps  compose  k8s            工程设施
+docs  structure  tasks  runbook          文档
+```
+
+scope 的约束只有四条：
+
+- **小写，一个词**（必要时用连字符：`error-budget`）
+- **描述范围，不描述动作** —— 动作已经在 type 和标题里了
+- **复用已有的** —— 同一个东西每次换个叫法，等于没有 scope
+- **想不出 scope 说明这次提交太杂了** —— 该拆成几个提交，而不是硬凑一个
 
 ```
 ✅ fix(booking): 熔断器不再把业务错误计入失败统计
@@ -39,9 +56,15 @@ scope：`booking` `flight` `k8s` `ci` `obs`（可观测性）`docs` `chaos`
    一个用户的错误输入导致全体不可用。
    Refs: D-01
 
-❌ fix bug
-❌ update
-❌ test
+✅ docs(structure): 按文档生命周期重构 docs/ 目录
+✅ feat(obs): 两个服务统一 slog JSON 输出
+✅ chore(deps): 升级 pgx 到 v5.7
+
+❌ fix bug                        除了 type 什么信息都没有
+❌ update                         同上
+❌ docs: 重构目录                  缺 scope
+❌ fix(修复熔断器): ...             scope 写成了动作
+❌ feat(booking-service-internal-grpcclient): ...   scope 不是文件路径
 ```
 
 **正文写"为什么"**。三个月后回头看，"改了什么"从 diff 就能看出来，"为什么"只有当时的你知道。修复本仓库已记录的缺陷时，脚注带上 `Refs: D-xx`。
