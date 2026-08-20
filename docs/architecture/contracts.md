@@ -81,10 +81,12 @@ POST /bookings
 | 航班不存在 | `NOT_FOUND` | 404 | `flight-service/internal/handler/flight.go` |
 | 活跃预留不存在 | `NOT_FOUND` | 404 | 同上 |
 | 余位不足 | `RESOURCE_EXHAUSTED` | 409 | 同上 |
-| 必填参数缺失 / 座位数 ≤ 0 | `INVALID_ARGUMENT` | 400 | 同上 |
+| 必填参数缺失 / 座位数 ≤ 0 | `INVALID_ARGUMENT` | 500 ⚠️ | 同上 |
 | API Key 缺失或错误 | `UNAUTHENTICATED` | —（内部） | `flight-service/internal/auth/interceptor.go` |
 | 服务端内部错误 | `INTERNAL` | 500 | 各 handler |
 | 熔断器 OPEN | —（未发出调用） | 503 | `booking-service/internal/handler/booking.go` |
+
+⚠️ **`INVALID_ARGUMENT` 这一行是当前实现，不是设计意图。** booking-service 侧没有对应的映射分支，下游的参数校验错误落进兜底的 500，并把 gRPC 错误原文透给调用方。应该是 400，见 [D-18](../tasks/D-18-invalid-argument-mapped-to-500.md)、[D-20](../tasks/D-20-internal-errors-leaked-to-clients.md)。
 
 **`RESOURCE_EXHAUSTED` 而不是 `FAILED_PRECONDITION`**：余位不足是"资源被耗尽"，语义精确，且它在重试策略里被明确归类为**不可重试** —— 重试一百次座位也不会变多。
 

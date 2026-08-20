@@ -17,6 +17,7 @@
 | [D-01](./D-01-circuit-breaker-error-classification.md) | 熔断器把业务错误计入失败统计 | 🔴 critical | todo | 熔断器可信度 |
 | [D-02](./D-02-error-rate-sli-server-errors-only.md) | 错误率 SLI 包含客户端错误 | 🔴 critical | todo | 整个 SLO 体系的正确性 |
 | [D-05](./D-05-health-check-endpoints.md) | 没有健康检查端点 | 🟠 major | todo | 阻塞阶段 2 K8s 迁移 |
+| [D-18](./D-18-invalid-argument-mapped-to-500.md) | 下游 INVALID_ARGUMENT 映射成 500 | 🟠 major | todo | 客户端输入能烧 error budget |
 | [D-15](./D-15-container-nonroot.md) | 容器以 root 运行 | 🟡 minor | todo | 容器安全基线 |
 
 ### 阶段 1 · 可观测性补全
@@ -54,6 +55,8 @@
 | ID | 任务 | 级别 | 状态 | 阻塞 / 影响 |
 |---|---|---|---|---|
 | [D-08](./D-08-grpc-mtls.md) | gRPC 明文传输 | 🟡 minor | todo | API Key 可被抓包窃取 |
+| [D-19](./D-19-request-body-not-validated.md) | 请求体必填字段不校验 | 🟡 minor | todo | 缺字段静默变零值（与 D-18 一起修） |
+| [D-20](./D-20-internal-errors-leaked-to-clients.md) | 5xx 透出内部错误原文 | 🟡 minor | todo | 泄漏 SQLSTATE、表结构、下游拓扑 |
 
 ## 已完成
 
