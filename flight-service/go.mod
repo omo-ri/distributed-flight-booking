@@ -1,4 +1,4 @@
-module github.com/omo-ri/coa-hw/hw3/flight-service
+module github.com/omo-ri/distributed-flight-booking/flight-service
 
 go 1.24.0
 

@@ -10,10 +10,10 @@ import (
 	"github.com/labstack/echo/v4"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
-	"github.com/omo-ri/coa-hw/hw3/booking-service/api"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/circuitbreaker"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/repository"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/service"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/api"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/circuitbreaker"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/repository"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/service"
 )
 
 // isCircuitOpen checks if the error is a circuit breaker open error and returns 503 if so.

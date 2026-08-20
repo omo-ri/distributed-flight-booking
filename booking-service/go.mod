@@ -1,4 +1,4 @@
-module github.com/omo-ri/coa-hw/hw3/booking-service
+module github.com/omo-ri/distributed-flight-booking/booking-service
 
 go 1.24.0
 
@@ -8,7 +8,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/oapi-codegen/runtime v1.2.0
-	github.com/omo-ri/coa-hw/hw3/flight-service v0.0.0
+	github.com/omo-ri/distributed-flight-booking/flight-service v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	google.golang.org/grpc v1.79.2
 )
@@ -42,4 +42,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/omo-ri/coa-hw/hw3/flight-service => ../flight-service
+replace github.com/omo-ri/distributed-flight-booking/flight-service => ../flight-service

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package flight;
 
-option go_package = "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight";
+option go_package = "github.com/omo-ri/distributed-flight-booking/flight-service/pb/flight";
 
 import "google/protobuf/timestamp.proto";
 

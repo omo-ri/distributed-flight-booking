@@ -8,9 +8,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/repository"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/service"
-	pb "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/repository"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/service"
+	pb "github.com/omo-ri/distributed-flight-booking/flight-service/pb/flight"
 )
 
 type FlightHandler struct {

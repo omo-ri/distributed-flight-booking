@@ -8,8 +8,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/repository"
-	pb "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/repository"
+	pb "github.com/omo-ri/distributed-flight-booking/flight-service/pb/flight"
 )
 
 // mockFlightService implements service.FlightService for testing.

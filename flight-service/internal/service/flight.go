@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/cache"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/repository"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/cache"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/repository"
 )
 
 type FlightService interface {

@@ -14,13 +14,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/auth"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/cache"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/handler"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/metrics"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/repository"
-	"github.com/omo-ri/coa-hw/hw3/flight-service/internal/service"
-	pb "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/auth"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/cache"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/handler"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/metrics"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/repository"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/service"
+	pb "github.com/omo-ri/distributed-flight-booking/flight-service/pb/flight"
 )
 
 func main() {

@@ -55,7 +55,7 @@ CI 全绿才能合并。**永远不要为了合并而临时放宽 SLO 阈值** �
 ## 2. 目录约定
 
 ```
-flight-booking/
+distributed-flight-booking/
 ├── docs/                       工程文档（中文）
 │   ├── runbooks/               告警处置手册，一条告警一个文件
 │   └── postmortems/            故障复盘，YYYY-MM-DD-<事件>.md

@@ -1,4 +1,4 @@
-# flight-booking 工程文档
+# distributed-flight-booking 工程文档
 
 这个目录是仓库的**工程化文档区**，与面向课程交付的 README（俄语）分开维护。
 
@@ -30,7 +30,7 @@
 ## 仓库结构
 
 ```
-flight-booking/
+distributed-flight-booking/
 ├── docs/                  # 本目录 —— 工程文档
 ├── proto/                 # gRPC 契约
 ├── flight-service/        # gRPC 服务

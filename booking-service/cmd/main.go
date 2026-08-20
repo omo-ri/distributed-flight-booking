@@ -15,13 +15,13 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/omo-ri/coa-hw/hw3/booking-service/api"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/circuitbreaker"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/grpcclient"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/handler"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/metrics"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/repository"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/service"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/api"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/circuitbreaker"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/grpcclient"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/handler"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/metrics"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/repository"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/service"
 )
 
 func main() {

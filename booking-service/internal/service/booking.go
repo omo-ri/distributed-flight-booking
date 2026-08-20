@@ -7,9 +7,9 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/grpcclient"
-	"github.com/omo-ri/coa-hw/hw3/booking-service/internal/repository"
-	pb "github.com/omo-ri/coa-hw/hw3/flight-service/pb/flight"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/grpcclient"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/repository"
+	pb "github.com/omo-ri/distributed-flight-booking/flight-service/pb/flight"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
