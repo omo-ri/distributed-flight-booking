@@ -102,7 +102,7 @@ POST /bookings
 
 **顺序是有意的**：先扣库存再落订单。如果反过来，扣库存失败时会留下一条无效订单。当前顺序下失败即中止，不会产生"订单存在但没座位"的状态。
 
-**代价**：如果第 2 步成功但第 3 步失败（booking-db 挂了），座位被扣了但订单不存在 —— 库存泄漏。这是当前架构**已知的、未解决的**一致性缺口，见 [03-gap-analysis.md](./03-gap-analysis.md)。
+**代价**：如果第 2 步成功但第 3 步失败（booking-db 挂了），座位被扣了但订单不存在 —— 库存泄漏。这是当前架构**已知的、未解决的**一致性缺口，见 [D-06](../tasks/D-06-seat-inventory-leak.md)。
 
 ### 幂等性
 
@@ -128,7 +128,7 @@ POST /bookings/{id}/cancel
 
 熔断器被设计成**独立包 + 泛型包装函数**（`withCircuitBreaker[T]`），不侵入业务逻辑。这是对的：韧性策略应该能独立于业务演进和测试。
 
-> ⚠️ 熔断器的失败判定当前存在缺陷（业务错误被计入熔断统计），见 [03-gap-analysis.md](./03-gap-analysis.md) 缺陷 D-01。
+> ⚠️ 熔断器的失败判定当前存在缺陷（业务错误被计入熔断统计），见 [D-01](../tasks/D-01-circuit-breaker-error-classification.md)。
 
 ## 6. 缓存策略
 
@@ -229,4 +229,4 @@ unit ──┘
 
 它具备了良好的可运维基础 —— 配置即代码、指标齐全、有 SLO 门禁。但它缺少运维体系真正需要的东西：编排层、发布流程、日志聚合、链路追踪、故障预案、优雅停机。
 
-下一步做什么，见 [03-gap-analysis.md](./03-gap-analysis.md) 和 [05-roadmap.md](./05-roadmap.md)。
+下一步做什么，见 [tasks/](../tasks/README.md) 和 [plans/roadmap.md](../plans/roadmap.md)。

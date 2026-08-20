@@ -4,7 +4,7 @@
 
 Весь стек поднимается одной командой `docker compose up`.
 
-> 📚 Инженерная документация проекта (на китайском) — в [`docs/`](./docs): архитектура, инвентарь возможностей, gap-анализ, инженерные конвенции, roadmap.
+> 📚 Инженерная документация проекта (на китайском) — в [`docs/`](./docs/README.md): [архитектура](./docs/architecture/), [конвенции](./docs/conventions/), [планы](./docs/plans/), [задачи](./docs/tasks/README.md), [база знаний](./docs/knowledge/), [runbooks](./docs/runbooks/), [отчёты](./docs/reports/).
 
 ---
 

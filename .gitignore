@@ -32,8 +32,10 @@ go.work.sum
 .vscode/
 
 *.http
+
+# AI 协作：CLAUDE.md 是规则的唯一权威，必须进版本控制；
+# 个人偏好配置（.claude/settings.local.json 等）不进
 .claude/
-CLAUDE.md
 
 # Python
 __pycache__/
@@ -42,5 +44,6 @@ __pycache__/
 .venv/
 venv/
 
-# Local artifacts
+# Local artifacts (运行时产物，只作为 CI artifact 保存 —— 见 docs/tasks/done/D-17-*.md)
 k6/out/
+metrics-report.json
