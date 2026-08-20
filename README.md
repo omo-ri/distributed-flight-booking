@@ -4,6 +4,8 @@
 
 Весь стек поднимается одной командой `docker compose up`.
 
+> 🇨🇳 Инструкция по использованию на китайском — [`README.zh-CN.md`](./README.zh-CN.md)
+
 > 📚 Инженерная документация проекта (на китайском) — в [`docs/`](./docs/README.md): [архитектура](./docs/architecture/), [конвенции](./docs/conventions/), [планы](./docs/plans/), [задачи](./docs/tasks/README.md), [база знаний](./docs/knowledge/), [runbooks](./docs/runbooks/), [отчёты](./docs/reports/).
 
 ---
