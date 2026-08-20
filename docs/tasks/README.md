@@ -1,25 +1,11 @@
 # 任务看板
 
-一条任务一个文件。文件名 `<ID>-<kebab 描述>.md`，ID 在整个仓库里稳定 —— 提交信息用 `Refs: D-01` 引用它。
+一条任务一个文件。ID 在整个仓库里稳定 —— 提交信息用 `Refs: D-01` 引用它。
 
 - **D-xx** —— 已有代码里的**具体缺陷**，来源是对现有实现的审查
 - **G-xx** —— 需要从零建设的**能力**，来源是 [`../plans/gap-analysis.md`](../plans/gap-analysis.md)（当前尚未拆分为任务，随阶段推进逐步拆出）
 
-## 状态流转
-
-```
-plans/gap-analysis.md 识别缺口
-      ↓ 拆解
-tasks/D-xx.md            status: todo
-      ↓ 开分支 fix/<描述>
-                         status: doing
-      ↓ PR 合并（提交信息带 Refs: D-xx）
-tasks/done/D-xx.md       status: done
-      ↓ 同一个 PR 内必须同步
-architecture/capabilities.md 加一条，带代码位置
-```
-
-**规则**：任何改变运行时行为的 PR，必须同时动 `tasks/` 和 `architecture/`。做完不搬文件 = 没做完。
+状态流转（`todo` → `doing` → 移入 `done/` 并同步 `architecture/capabilities.md`）的规则见 [`CLAUDE.md`](../../CLAUDE.md) § 3。**做完不搬文件 = 没做完。**
 
 ## 待办
 
@@ -110,4 +96,4 @@ refs:
 ## 学到什么
 ```
 
-`验收标准` 对应 [`../conventions/engineering.md` § 5](../conventions/engineering.md) 的变更纪律三问：怎么验证它生效了、怎么知道它出问题了、怎么回滚。
+`验收标准` 对应 [`CLAUDE.md`](../../CLAUDE.md) § 4 的变更纪律三问：怎么验证它生效了、怎么知道它出问题了、怎么回滚。理由见 [`../conventions/engineering.md` § 6](../conventions/engineering.md)。

@@ -1,18 +1,12 @@
 # Runbooks
 
-**一条告警一个文件，文件名与告警名完全一致。**
+一条告警一个文件，文件名与告警名完全一致；写在**建告警的时候**——规则见 [`CLAUDE.md`](../../CLAUDE.md) § 3，理由见 [conventions/engineering.md § 5](../conventions/engineering.md)。
 
 `prometheus/alerts.yml` 里每条规则的 `annotations.runbook_url` 必须指向这里的对应文件。
 
 ## 当前状态
 
 **空的。** 三条已有告警（`HighErrorRate`、`HighLatencyP95`、`ServiceDown`）都还没有 runbook —— 见 [D-14](../tasks/D-14-alert-runbooks.md)。
-
-## 什么时候写
-
-**建告警的时候，不是故障发生的时候。**
-
-告警响了才现写 runbook，等于值班的人在最需要它的时刻手上什么都没有。规范里的判据很直接：一条告警如果写不出 runbook，说明还没想清楚它响了之后谁该做什么 —— 那它就不该是告警。
 
 ## 固定结构
 
@@ -43,5 +37,5 @@
 
 ## 维护
 
-- runbook 里的命令会过期（资源名、端口、看板 URL 变了）。[engineering.md § 6](../conventions/engineering.md) 要求：**改 runbook 时照着做一遍，确认命令都能跑**
+- runbook 里的命令会过期（资源名、端口、看板 URL 变了）。[`CLAUDE.md`](../../CLAUDE.md) § 4 要求：**改 runbook 时照着做一遍，确认命令都能跑**
 - 每次真实故障或演练之后，回来更新对应 runbook —— 演练里发现的"这步实际不管用"是最有价值的修订来源

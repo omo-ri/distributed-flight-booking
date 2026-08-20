@@ -285,7 +285,7 @@
 2. **一键诊断工具** —— 输入时间窗，自动抓取该窗口的指标快照、相关日志、K8s 事件、当时的部署记录，打包成诊断报告
 3. **告警自愈** —— 特定告警触发自动处置（例：磁盘 85% → 自动清理旧日志并通报）
 4. **AI 辅助工作流**
-   - 项目级 `CLAUDE.md`：构建命令、代码约定、常见陷阱、目录说明（注意先处理 `.gitignore` 里对 `CLAUDE.md` 的忽略，见 [conventions/engineering.md § 10](../conventions/engineering.md)）
+   - 项目级 [`CLAUDE.md`](../../CLAUDE.md) 已建立（规则的唯一权威）；本阶段做的是把自动化相关约定补进去，并处理 `.gitignore` 里对它的忽略，见 [conventions/engineering.md § 3](../conventions/engineering.md)
    - 复盘草稿生成：喂入故障时间窗的指标和日志，产出复盘初稿供人工修订
    - Runbook 一致性检查：runbook 里的命令是否还有效（引用的资源名/端口是否已变更）
    - 新告警规则的 PR 检查：是否带 runbook_url、表达式是否会误报

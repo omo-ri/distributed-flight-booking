@@ -10,7 +10,7 @@
 | Sentinel 的 quorum 该设多少、为什么？ | 本目录 `datastore/` |
 | 这个项目的 Sentinel 配错了要怎么修？ | [`tasks/D-04`](../tasks/D-04-sentinel-quorum-ha.md) |
 
-**判据**：如果一段内容里出现了 `booking-service` 这类本仓库专有名词，它多半不属于这里。
+判据见 [`CLAUDE.md`](../../CLAUDE.md) § 3 的分层表。
 
 ## 目录
 
