@@ -4,10 +4,29 @@
 
 - **D-xx** —— 已有代码里的**具体缺陷**，来源是对现有实现的审查
 - **G-xx** —— 需要从零建设的**能力**，来源是 [`../plans/gap-analysis.md`](../plans/gap-analysis.md)（当前尚未拆分为任务，随阶段推进逐步拆出）
+- **T-xx** —— **测试基础设施**的建设条目。它既不是已有代码的缺陷，也不是 JD 能力缺口，所以单开一个序列。文件用下方模板的变体：`现象 / 根因` 两节换成 `为什么需要 / 做什么`，其余相同
 
 状态流转（`todo` → `doing` → 移入 `done/` 并同步 `architecture/capabilities.md`）的规则见 [`CLAUDE.md`](../../CLAUDE.md) § 3。**做完不搬文件 = 没做完。**
 
 ## 待办
+
+### 地基阶段 · 测试骨架与容量基线
+
+排在阶段 0 之前。理由：阶段 0 起的每一条缺陷修复都要求"先有能变红的测试"，而这套设施当前不存在。分档规则见 [`CLAUDE.md`](../../CLAUDE.md) § 4，理由与空洞清单见 [`../conventions/testing.md`](../conventions/testing.md)。
+
+**完成判据**：四档能各自跑起来，且 [D-19](./D-19-grpc-http-status-mapping.md) 与 [D-23](./D-23-concurrent-release-double-refund.md) 的复现测试**能稳定变红**。修绿归阶段 0——红色证明的是这套设施能持续发现问题，绿色只证明某一次修复。
+
+| ID | 任务 | 级别 | 状态 | 阻塞 / 影响 |
+|---|---|---|---|---|
+| [T-01](./T-01-extract-app-package.md) | 启动组装抽进 `internal/app` | 🔴 critical | todo | 阻塞 T-02；同时是 D-03 的骨架 |
+| [T-02](./T-02-testcontainers-harness.md) | testcontainers 骨架 + fixture builder（两模块各一套） | 🔴 critical | todo | 阻塞 T-03 / T-04 |
+| [T-03](./T-03-flight-l2-tests.md) | flight L2：真实 SQL、并发事务、service 层 | 🔴 critical | todo | **D-23 的复现载体** |
+| [T-04](./T-04-booking-l2-tests.md) | booking L2：本地 repository + pb 契约桩 | 🔴 critical | todo | **D-19 的复现载体** |
+| [T-08](./T-08-cache-interface.md) | 缓存抽接口 + `nopCache` | 🟠 major | todo | 阻塞 T-09；**有 typed-nil 地雷** |
+| [T-09](./T-09-in-memory-cache-fake.md) | 缓存的内存假实现 | 🟡 minor | todo | 阻塞 T-03 的 service 层部分 |
+| [T-06](./T-06-k6-three-scenarios.md) | k6 改造成三场景，开环压测 | 🟠 major | todo | 阻塞 T-07；**无前置，可最先做** |
+| [T-07](./T-07-local-capacity-baseline.md) | 本机容量基线报告 | 🟠 major | todo | 阻塞 D-27 / D-25 / D-16 |
+| [T-05](./T-05-four-tier-ci-topology.md) | 四档落成：Makefile + CI 拓扑 + 镜像复用 + `.dockerignore` | 🟠 major | todo | 需要 T-02/T-03/T-04 先有东西可编排 |
 
 ### 阶段 0 · 修复阻塞缺陷
 
@@ -64,6 +83,7 @@
 | [D-08](./D-08-grpc-mtls.md) | gRPC 明文传输 | 🟡 minor | todo | API Key 可被抓包窃取 |
 | [D-18](./D-18-openapi-request-validation.md) | OpenAPI 请求校验没有生效 | 🟡 minor | todo | 规范与实现分家，非 UUID 入参返回 500 |
 | [D-26](./D-26-price-snapshot-from-cache.md) | 订单金额快照读的是缓存价格 | 🟡 minor | todo | 当前无改价路径，触发不了；加改价功能时立即生效 |
+| [D-28](./D-28-missing-down-migrations.md) | 迁移全部只有 up，没有 down | 🟡 minor | todo | `CLAUDE.md` § 4 的规则当前无对象可遵守；阻塞阶段 3 的回滚 |
 
 ## 已完成
 
@@ -74,6 +94,15 @@
 ## 阻塞关系
 
 ```
+T-06 k6 三场景 ──► T-07 本机基线 ──┬──► D-27 桶边界（按实测分布定）
+                                   ├──► D-25 超时取值（按实测 p99 定）
+                                   └──► D-16 容量规划
+
+T-01 app 抽取 ──► T-02 容器骨架 ──┬──► T-03 flight L2 ──► D-23 能变红
+                                  └──► T-04 booking L2 ─► D-19 能变红
+T-08 缓存接口 ──► T-09 假实现 ─────────► T-03 的 service 层部分
+T-02 / T-03 / T-04 ────────────────────► T-05 四档与 CI 落成
+
 D-03 优雅停机 ─┐
                ├──► 阶段 2 Kubernetes 迁移
 D-05 健康检查 ─┘
@@ -82,8 +111,9 @@ D-11 结构化日志 ──► 阶段 5 故障演练（没有能查的日志，�
 D-11 结构化日志 ──► D-20 的完整修复（对外不回显错误详情，需要 request_id 能跨服务串起来）
 
 D-25 全链路超时 ──► D-21 HALF_OPEN 限流（探测请求不返回，熔断器会卡死在 HALF_OPEN）
-D-16 可信压测   ──► D-25 超时取值（超时值要由真实 p99 决定，不能拍脑袋）
-                └──► D-27 桶边界（桶要按实测分布定，而当前基线只测到 k6 自己的天花板）
+
+（D-25 的超时值与 D-27 的桶边界都必须由实测数据决定，而实测数据由 T-07 产出——见上方第一张图。
+  `k6/script.js:82` 的 sleep 让唯一一次基线只测到了 k6 自己的天花板。）
 
 D-19 错误码映射 ──► D-02 错误率 SLI（D-02 修聚合口径，D-19 修数据源头，只修一头不干净）
 ```

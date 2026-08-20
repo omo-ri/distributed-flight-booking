@@ -30,6 +30,7 @@ docs/
 │   └── capabilities.md      能力清单，每条指向代码位置
 ├── conventions/           规则的理由（规则本身在 CLAUDE.md）
 │   ├── engineering.md       分支、提交、目录、配置、可观测性、变更纪律
+│   ├── testing.md           测试分档的判据、数据策略、当前不覆盖什么
 │   └── documentation.md     本文
 ├── plans/                 要做什么、为什么
 │   ├── roadmap.md           分阶段路线图
@@ -37,6 +38,7 @@ docs/
 ├── tasks/                 可执行条目，一条一文件
 │   ├── README.md            看板索引
 │   ├── D-xx-*.md            已发现的缺陷
+│   ├── T-xx-*.md            测试基础设施建设
 │   └── done/                完成后移入
 ├── knowledge/             按主题的知识笔记
 │   ├── kubernetes/ observability/ sre/ linux-network/ datastore/
