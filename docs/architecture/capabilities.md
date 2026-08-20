@@ -123,7 +123,7 @@ CLOSED ──窗口内失败达阈值──► OPEN ──等待 timeout──�
 
 设计上的正确之处：**熔断逻辑封装在独立包，通过泛型函数 `withCircuitBreaker[T]` 包装 gRPC 调用**（`flight.go:59`），不侵入业务代码。有独立单元测试 `breaker_test.go`。
 
-> ⚠️ 失败判定有缺陷，见 [03](./03-gap-analysis.md) D-01。
+> ⚠️ 失败判定有缺陷，见 [D-01](../tasks/D-01-circuit-breaker-error-classification.md)。
 
 ### C-3 Redis Sentinel 接入 ✅
 
@@ -286,4 +286,4 @@ booking-service 有 `middleware.RequestID()`，但这个 ID **没有通过 gRPC 
 2. **指标基数控制**（D-1）—— 能说清楚为什么用路由模板、不控制会发生什么、生产上怎么发现基数爆炸。
 3. **SLO 进 CI 门禁**（E-1 / E-2）—— 阈值从压测基线推导，违反阻断合并。大部分候选人只能说"配过 Grafana"。
 
-还讲不了的（现在）：K8s、发布回滚、日志排障、故障复盘。这四项恰好是运维岗最核心的，见 [03-gap-analysis.md](./03-gap-analysis.md)。
+还讲不了的（现在）：K8s、发布回滚、日志排障、故障复盘。这四项恰好是运维岗最核心的，见 [plans/gap-analysis.md](../plans/gap-analysis.md)。

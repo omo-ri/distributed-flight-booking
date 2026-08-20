@@ -37,12 +37,12 @@
 
 | 任务 | 缺陷 | 学到什么 |
 |---|---|---|
-| 两个服务加优雅停机 | D-03 | SIGTERM 处理、在途请求排空、`GracefulStop` vs `Stop`、K8s 终止生命周期与 `preStop` |
-| 加 `/livez` 和 `/readyz` | D-05 | liveness 与 readiness 的语义区别；为什么依赖检查放进 liveness 会造成 CrashLoopBackOff |
-| 熔断器区分故障类型 | D-01 | 依赖健康度信号 vs 业务结果；熔断器该保护什么 |
-| 熔断器加 Prometheus 指标 | D-01 | 状态 gauge + 迁移 counter；"没有指标的机制等于不存在" |
-| 错误率 SLI 只算 server error | D-02 | SLI 定义的正确性；为什么 4xx 不该进可用性 SLI |
-| 容器非 root + `.dockerignore` | D-15 | 容器安全基线、构建上下文 |
+| 两个服务加优雅停机 | [D-03](../tasks/D-03-graceful-shutdown.md) | SIGTERM 处理、在途请求排空、`GracefulStop` vs `Stop`、K8s 终止生命周期与 `preStop` |
+| 加 `/livez` 和 `/readyz` | [D-05](../tasks/D-05-health-check-endpoints.md) | liveness 与 readiness 的语义区别；为什么依赖检查放进 liveness 会造成 CrashLoopBackOff |
+| 熔断器区分故障类型 | [D-01](../tasks/D-01-circuit-breaker-error-classification.md) | 依赖健康度信号 vs 业务结果；熔断器该保护什么 |
+| 熔断器加 Prometheus 指标 | [D-01](../tasks/D-01-circuit-breaker-error-classification.md) | 状态 gauge + 迁移 counter；"没有指标的机制等于不存在" |
+| 错误率 SLI 只算 server error | [D-02](../tasks/D-02-error-rate-sli-server-errors-only.md) | SLI 定义的正确性；为什么 4xx 不该进可用性 SLI |
+| 容器非 root + `.dockerignore` | [D-15](../tasks/D-15-container-nonroot.md) | 容器安全基线、构建上下文 |
 
 **验收**：
 - `docker compose stop booking-service` 期间持续压测，**零请求失败**
@@ -62,13 +62,13 @@
 
 ### 任务
 
-1. **统一结构化日志** —— flight-service 从标准库 `log` 换成 `slog` JSON；清理高频路径上的噪音日志（D-11）
+1. **统一结构化日志** —— flight-service 从标准库 `log` 换成 `slog` JSON；清理高频路径上的噪音日志（[D-11](../tasks/D-11-structured-logging.md)）
 2. **trace_id 贯通** —— booking 侧生成，通过 gRPC metadata 传给 flight，两侧日志都带上
 3. **OpenTelemetry** —— 两个服务接入 SDK，HTTP 和 gRPC 都自动埋点，导出到 Tempo（或 Jaeger）
 4. **Loki + Alloy** —— 日志采集入栈，Grafana 加 Loki 数据源
 5. **三支柱联查** —— Grafana 配置 derived fields，从日志的 trace_id 一键跳到链路视图；从看板的异常时间点跳到对应日志
 6. **指标补全** —— 缓存命中率、连接池使用率、重试次数
-7. **Prometheus 持久化** —— 加 volume，保留期提到 15 天（D-09）
+7. **Prometheus 持久化** —— 加 volume，保留期提到 15 天（[D-09](../tasks/D-09-prometheus-persistence.md)）
 
 ### 验收
 
@@ -102,11 +102,11 @@
 2. **手写 manifests**
    - 无状态服务：Deployment + Service
    - 数据库：StatefulSet + PVC + Headless Service
-   - Redis：3 个 sentinel 的 StatefulSet（顺便修 D-04）
+   - Redis：3 个 sentinel 的 StatefulSet（顺便修 [D-04](../tasks/D-04-sentinel-quorum-ha.md)）
    - 入口：Ingress（nginx-ingress 或 Traefik）
 3. **探针配置** —— liveness / readiness / startup 三种探针的参数调优
-4. **资源管理** —— 从 k6 压测数据推 requests/limits（D-10），理解三种 QoS
-5. **配置与密钥** —— ConfigMap + Secret，密钥从 compose 里挪出来（D-07）
+4. **资源管理** —— 从 k6 压测数据推 requests/limits（[D-10](../tasks/D-10-container-resource-limits.md)），理解三种 QoS
+5. **配置与密钥** —— ConfigMap + Secret，密钥从 compose 里挪出来（[D-07](../tasks/D-07-plaintext-secrets.md)）
 6. **可用性保障** —— HPA、PDB、`topologySpreadConstraints`
 7. **参数化** —— Kustomize base + overlays（dev/staging），或 Helm chart
 8. **安全上下文** —— `runAsNonRoot`、`readOnlyRootFilesystem`、`drop: [ALL]`
@@ -178,9 +178,9 @@
 
 ### 任务
 
-1. **重定义 SLI** —— 明确好事件与总事件的定义，区分可用性和延迟 SLI（承接 D-02 的修复）
+1. **重定义 SLI** —— 明确好事件与总事件的定义，区分可用性和延迟 SLI（承接 [D-02](../tasks/D-02-error-rate-sli-server-errors-only.md) 的修复）
 2. **Error Budget** —— 28 天窗口，Grafana 上展示剩余预算和消耗速率
-3. **多窗口多燃烧率告警** —— 替换现有的静态阈值（D-13）
+3. **多窗口多燃烧率告警** —— 替换现有的静态阈值（[D-13](../tasks/D-13-error-budget.md)）
 
    | 长窗口 | 短窗口 | 燃烧率 | 响应级别 |
    |---|---|---|---|
@@ -188,9 +188,9 @@
    | 6h | 30m | 6× | page |
    | 3d | 6h | 1× | ticket |
 
-4. **Runbook** —— 每条告警一份，`runbook_url` 填进 annotations（D-14）
-5. **Alertmanager 路由** —— 分级路由、抑制规则（`ServiceDown` 触发时抑制该服务的 `HighErrorRate`）、静默机制、接一个真实通知渠道（D-12）
-6. **容量规划** —— 阶梯压测找拐点（D-16），产出容量模型文档：X QPS 需要 Y 副本 Z 资源
+4. **Runbook** —— 每条告警一份，`runbook_url` 填进 annotations（[D-14](../tasks/D-14-alert-runbooks.md)）
+5. **Alertmanager 路由** —— 分级路由、抑制规则（`ServiceDown` 触发时抑制该服务的 `HighErrorRate`）、静默机制、接一个真实通知渠道（[D-12](../tasks/D-12-alertmanager-receiver.md)）
+6. **容量规划** —— 阶梯压测找拐点（[D-16](../tasks/D-16-capacity-load-testing.md)），产出容量模型文档：X QPS 需要 Y 副本 Z 资源
 
 ### 验收
 
@@ -226,15 +226,15 @@
 
 | # | 场景 | 注入手段 | 检验什么 | 关联缺陷 |
 |---|---|---|---|---|
-| 1 | Redis master 宕机 | 删 Pod | Sentinel 选举耗时、客户端重连、期间丢多少请求 | D-04 |
-| 2 | flight-service 完全不可用 | 缩容到 0 | 熔断器打开、503 快速失败而非超时堆积 | D-01 |
+| 1 | Redis master 宕机 | 删 Pod | Sentinel 选举耗时、客户端重连、期间丢多少请求 | [D-04](../tasks/D-04-sentinel-quorum-ha.md) |
+| 2 | flight-service 完全不可用 | 缩容到 0 | 熔断器打开、503 快速失败而非超时堆积 | [D-01](../tasks/D-01-circuit-breaker-error-classification.md) |
 | 3 | 下游高延迟 | toxiproxy 注入 500ms | 超时传播、连接池耗尽、上游雪崩 | — |
 | 4 | PG 连接池耗尽 | 打满连接 | 排队 vs 失败、连接池参数影响 | — |
-| 5 | Pod OOMKilled | 压低 memory limit | 重启行为、QoS 驱逐顺序、有无数据丢失 | D-10 |
-| 6 | 节点驱逐 | `kubectl drain` | PDB 是否生效、优雅停机是否真的工作 | D-03 |
+| 5 | Pod OOMKilled | 压低 memory limit | 重启行为、QoS 驱逐顺序、有无数据丢失 | [D-10](../tasks/D-10-container-resource-limits.md) |
+| 6 | 节点驱逐 | `kubectl drain` | PDB 是否生效、优雅停机是否真的工作 | [D-03](../tasks/D-03-graceful-shutdown.md) |
 | 7 | DNS 故障 | 破坏 CoreDNS | K8s 服务发现路径、客户端 DNS 缓存行为 | — |
 | 8 | 磁盘写满 | 填充 PVC | PG 只读降级、告警是否覆盖 | — |
-| 9 | **库存泄漏** | 在 ReserveSeats 成功后 kill booking-service | 暴露 D-06，然后设计并验证修复方案 | **D-06** |
+| 9 | **库存泄漏** | 在 ReserveSeats 成功后 kill booking-service | 暴露 [D-06](../tasks/D-06-seat-inventory-leak.md)，然后设计并验证修复方案 | **[D-06](../tasks/D-06-seat-inventory-leak.md)** |
 | 10 | 网络分区 | NetworkPolicy 切断 | 分区两侧各自的行为 | — |
 
 ### 每个场景的执行流程
@@ -245,7 +245,7 @@
 3. 观测          —— 实际发生了什么，实际哪条告警响了（或没响）
 4. 恢复          —— 记录耗时
 5. 对比          —— 假设 vs 现实，差异在哪，为什么
-6. 写复盘        —— docs/postmortems/YYYY-MM-DD-<事件>.md
+6. 写复盘        —— docs/reports/postmortems/YYYY-MM-DD-<事件>.md
 7. 落实行动项    —— 改代码 / 改配置 / 改告警 / 补 runbook
 8. 重新演练      —— 用数据证明改进有效
 ```
@@ -285,7 +285,7 @@
 2. **一键诊断工具** —— 输入时间窗，自动抓取该窗口的指标快照、相关日志、K8s 事件、当时的部署记录，打包成诊断报告
 3. **告警自愈** —— 特定告警触发自动处置（例：磁盘 85% → 自动清理旧日志并通报）
 4. **AI 辅助工作流**
-   - 项目级 `CLAUDE.md`：构建命令、代码约定、常见陷阱、目录说明（注意先处理 `.gitignore` 里对 `CLAUDE.md` 的忽略，见 [04 § 10](./04-engineering-conventions.md)）
+   - 项目级 `CLAUDE.md`：构建命令、代码约定、常见陷阱、目录说明（注意先处理 `.gitignore` 里对 `CLAUDE.md` 的忽略，见 [conventions/engineering.md § 10](../conventions/engineering.md)）
    - 复盘草稿生成：喂入故障时间窗的指标和日志，产出复盘初稿供人工修订
    - Runbook 一致性检查：runbook 里的命令是否还有效（引用的资源名/端口是否已变更）
    - 新告警规则的 PR 检查：是否带 runbook_url、表达式是否会误报
@@ -335,12 +335,12 @@
 - **PostgreSQL**：开慢查询日志、对现有查询做 `EXPLAIN ANALYZE`、观察连接池行为、做一次主从复制配置
 - **Redis**：`SLOWLOG` 分析、内存淘汰策略实验、RDB 与 AOF 的恢复演练
 
-建议方式：**每个阶段结束时，用当前系统做 1–2 个基础技能的专项练习**，写成短文档放 `docs/` 下。
+建议方式：**每个阶段结束时，用当前系统做 1–2 个基础技能的专项练习**，写成短文档放 [`docs/knowledge/`](../knowledge/) 下。
 
 ---
 
 ## 现在的下一步
 
-阶段 0 的第一个任务：**两个服务加优雅停机**（D-03）。
+阶段 0 的第一个任务：**两个服务加优雅停机**（[D-03](../tasks/D-03-graceful-shutdown.md)）。
 
 理由：它是阶段 2 的硬前置，改动量小（每个服务 30 行左右），验证方式直观（滚动重启期间压测看零错误），而且背后的知识点（SIGTERM、连接排空、K8s 终止生命周期）是运维面试的高频题。

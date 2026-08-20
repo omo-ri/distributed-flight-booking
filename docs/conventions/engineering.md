@@ -56,9 +56,17 @@ CI 全绿才能合并。**永远不要为了合并而临时放宽 SLO 阈值** �
 
 ```
 distributed-flight-booking/
-├── docs/                       工程文档（中文）
-│   ├── runbooks/               告警处置手册，一条告警一个文件
-│   └── postmortems/            故障复盘，YYYY-MM-DD-<事件>.md
+├── docs/                       工程文档（中文），分类见 docs/conventions/documentation.md
+│   ├── architecture/           【事实】系统现在是什么
+│   ├── conventions/            【规范】动手前读
+│   ├── plans/                  【意图】路线图、能力差距
+│   ├── tasks/                  【意图】可执行条目，一条一文件
+│   ├── knowledge/              【知识】按主题，与本仓库解耦
+│   ├── runbooks/               【操作】告警处置手册，一条告警一个文件
+│   └── reports/                【记录】带日期，写完不改
+│       ├── postmortems/        故障复盘，YYYY-MM-DD-<事件>.md
+│       ├── load/               压测报告
+│       └── reviews/            周期性 SLO 评审
 ├── proto/                      gRPC 契约（源）
 ├── <service>/
 │   ├── cmd/                    入口，只做依赖组装
@@ -200,17 +208,12 @@ log.Info("seats reserved",
 
 ## 7. 文档纪律
 
+完整的文档分类、命名、链接与复盘文档要求见 [documentation.md](./documentation.md)。这里只列三条不可协商的：
+
 - 代码改了，对应文档同一个 PR 里改。**不允许"回头再补"**
-- `docs/01-architecture.md` 只描述已存在的东西
-- 能力实现了，从 `03-gap-analysis.md` 划掉，加到 `02-capability-inventory.md`，带上代码位置
-- 每个故障演练产出一份 `docs/postmortems/` 文档，**无论演练成功与否**
-
-### 复盘文档要求
-
-- **对事不对人**（blameless）。根因是"系统允许这种错误发生"，不是"某人手滑"
-- 必须有**时间线**：故障开始 → 检测到 → 定位 → 缓解 → 恢复，每个时间点都有
-- 必须有**量化影响**：多少请求失败、持续多久、错误预算消耗了多少
-- 必须有**可执行的行动项**，每条带负责人和期限。"以后小心点"不是行动项
+- `docs/architecture/` 只描述已存在的东西
+- 能力实现了，把 `docs/tasks/D-xx.md` 移进 `docs/tasks/done/` 并把 `status` 改成 `done`，同时加进 `docs/architecture/capabilities.md`，带上代码位置
+- 每个故障演练产出一份 `docs/reports/postmortems/` 文档，**无论演练成功与否**
 
 ## 8. 依赖与版本
 
@@ -226,7 +229,8 @@ log.Info("seats reserved",
 | 环境变量 | 大写下划线 | `CB_ERROR_THRESHOLD` |
 | 指标 | 小写下划线 + 单位后缀 | `http_request_duration_seconds` |
 | K8s 资源 | kebab-case | `booking-service` |
-| 文档文件 | kebab-case，编号文档带前缀 | `03-gap-analysis.md` |
+| 文档文件 | kebab-case，目录承担分类，不加全局序号 | `gap-analysis.md` |
+| 任务文档 | `<ID>-<kebab 描述>.md` | `D-01-circuit-breaker-error-classification.md` |
 | 复盘文档 | `YYYY-MM-DD-<事件>.md` | `2026-09-03-redis-failover.md` |
 
 ## 10. 一个待处理的仓库设置
