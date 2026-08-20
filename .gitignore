@@ -42,5 +42,6 @@ __pycache__/
 .venv/
 venv/
 
-# Local artifacts
+# Local artifacts (运行时产物，只作为 CI artifact 保存 —— 见 docs/tasks/done/D-17-*.md)
 k6/out/
+metrics-report.json
