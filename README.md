@@ -4,6 +4,8 @@
 
 Весь стек поднимается одной командой `docker compose up`.
 
+> 📚 Инженерная документация проекта (на китайском) — в [`docs/`](./docs): архитектура, инвентарь возможностей, gap-анализ, инженерные конвенции, roadmap.
+
 ---
 
 ## Содержание
@@ -324,7 +326,7 @@ docker run --rm --network host -v "$PWD/k6:/scripts" -w /scripts \
 
 ## CI/CD
 
-GitHub Actions, `.github/workflows/hw3-ci.yml`, запускается на push в `main` и на pull request с фильтром по путям `hw3/**`.
+GitHub Actions, `.github/workflows/ci.yml`, запускается на push в `main` и на каждый pull request.
 
 | Job | Что делает |
 |---|---|
@@ -340,7 +342,7 @@ GitHub Actions, `.github/workflows/hw3-ci.yml`, запускается на push
 ## Структура проекта
 
 ```
-hw3/
+.
 ├── proto/flight/flight.proto     # gRPC-контракт
 ├── docker-compose.yml            # 12 контейнеров
 ├── Makefile
