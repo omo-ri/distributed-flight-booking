@@ -16,7 +16,14 @@
 | [D-03](./D-03-graceful-shutdown.md) | 没有优雅停机 | 🔴 critical | todo | 阻塞阶段 2 K8s 迁移 |
 | [D-01](./D-01-circuit-breaker-error-classification.md) | 熔断器把业务错误计入失败统计 | 🔴 critical | todo | 熔断器可信度 |
 | [D-02](./D-02-error-rate-sli-server-errors-only.md) | 错误率 SLI 包含客户端错误 | 🔴 critical | todo | 整个 SLO 体系的正确性 |
+| [D-25](./D-25-no-timeouts-anywhere.md) | 整条调用链没有任何超时 | 🔴 critical | todo | **阻塞 D-21**；下游卡死会拖垮上游，熔断器失效 |
+| [D-23](./D-23-concurrent-release-double-refund.md) | 并发取消会重复归还座位 | 🔴 critical | todo | 数据正确性：库存凭空增加 |
+| [D-24](./D-24-booking-idempotency-key.md) | `POST /bookings` 没有幂等保护 | 🔴 critical | todo | 数据正确性：客户端重发会重复扣库存 |
 | [D-05](./D-05-health-check-endpoints.md) | 没有健康检查端点 | 🟠 major | todo | 阻塞阶段 2 K8s 迁移 |
+| [D-19](./D-19-grpc-http-status-mapping.md) | gRPC 错误码到 HTTP 的映射不完整 | 🟠 major | todo | D-02 的数据源头，只修 D-02 不干净 |
+| [D-20](./D-20-internal-error-disclosure.md) | 内部错误详情返回给外部客户端 | 🟠 major | todo | 信息泄漏；完整修复依赖 D-11 |
+| [D-21](./D-21-half-open-no-probe-limit.md) | 熔断器 HALF_OPEN 不限流 | 🟠 major | todo | 下游恢复时惊群；与 D-01 同包同改 |
+| [D-22](./D-22-redis-startup-not-degradable.md) | Redis 连不上导致服务无法启动 | 🟠 major | todo | 阶段 2 后会变成 CrashLoopBackOff |
 | [D-15](./D-15-container-nonroot.md) | 容器以 root 运行 | 🟡 minor | todo | 容器安全基线 |
 
 ### 阶段 1 · 可观测性补全
@@ -25,6 +32,7 @@
 |---|---|---|---|---|
 | [D-11](./D-11-structured-logging.md) | 日志不可用于排障 | 🟠 major | todo | 阻塞阶段 5 故障演练 |
 | [D-09](./D-09-prometheus-persistence.md) | 监控数据不持久 | 🟡 minor | todo | 跨天趋势、error budget 周期统计 |
+| [D-27](./D-27-histogram-buckets-mismatch.md) | 直方图桶与延迟量级不匹配 | 🟡 minor | todo | p95 不可信 → CI 门禁看不见性能退化 |
 
 ### 阶段 2 · Kubernetes 迁移
 
@@ -54,6 +62,8 @@
 | ID | 任务 | 级别 | 状态 | 阻塞 / 影响 |
 |---|---|---|---|---|
 | [D-08](./D-08-grpc-mtls.md) | gRPC 明文传输 | 🟡 minor | todo | API Key 可被抓包窃取 |
+| [D-18](./D-18-openapi-request-validation.md) | OpenAPI 请求校验没有生效 | 🟡 minor | todo | 规范与实现分家，非 UUID 入参返回 500 |
+| [D-26](./D-26-price-snapshot-from-cache.md) | 订单金额快照读的是缓存价格 | 🟡 minor | todo | 当前无改价路径，触发不了；加改价功能时立即生效 |
 
 ## 已完成
 
@@ -69,7 +79,16 @@ D-03 优雅停机 ─┐
 D-05 健康检查 ─┘
 
 D-11 结构化日志 ──► 阶段 5 故障演练（没有能查的日志，演练出故障只能干瞪眼）
+D-11 结构化日志 ──► D-20 的完整修复（对外不回显错误详情，需要 request_id 能跨服务串起来）
+
+D-25 全链路超时 ──► D-21 HALF_OPEN 限流（探测请求不返回，熔断器会卡死在 HALF_OPEN）
+D-16 可信压测   ──► D-25 超时取值（超时值要由真实 p99 决定，不能拍脑袋）
+                └──► D-27 桶边界（桶要按实测分布定，而当前基线只测到 k6 自己的天花板）
+
+D-19 错误码映射 ──► D-02 错误率 SLI（D-02 修聚合口径，D-19 修数据源头，只修一头不干净）
 ```
+
+**同包同改建议**：[D-01](./D-01-circuit-breaker-error-classification.md) 与 [D-21](./D-21-half-open-no-probe-limit.md) 都在 `internal/circuitbreaker`，一次改完；D-01 要加的熔断器指标正好能验证 D-21 的效果。
 
 ## 任务文件模板
 
