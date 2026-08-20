@@ -4,9 +4,7 @@
 
 `prometheus/alerts.yml` 里每条规则的 `annotations.runbook_url` 必须指向这里的对应文件。
 
-## 当前状态
-
-**空的。** 三条已有告警（`HighErrorRate`、`HighLatencyP95`、`ServiceDown`）都还没有 runbook —— 见 [D-14](../tasks/D-14-alert-runbooks.md)。
+`prometheus/alerts.yml` 定义的三条告警（`HighErrorRate:5`、`HighLatencyP95:19`、`ServiceDown:34`）在本目录都没有对应文件，三条规则也都不带 `runbook_url` 注解 —— 见 [D-14](../tasks/D-14-alert-runbooks.md)。
 
 ## 固定结构
 

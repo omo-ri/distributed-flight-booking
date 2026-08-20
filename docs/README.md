@@ -31,13 +31,6 @@
 | 查历史故障和压测数据 | [reports/](./reports/) |
 | 复习某个技术主题 | [knowledge/](./knowledge/) |
 
-## 当前状态
-
-- 作业评分维度（1–10 分）：**全部完成**
-- 工程维度：处在"开发得很好但没被运维过"的位置
-- 已识别缺陷：17 条（16 待办 + 1 已完成），见 [tasks/README.md](./tasks/README.md)
-- 下一步：阶段 0 的 [D-03 优雅停机](./tasks/D-03-graceful-shutdown.md)
-
 ## 相关仓库
 
 同一门课的作业 2（`hw2-marketplace`，单体 REST API）仍留在原 [`coa-hw`](https://github.com/omo-ri/coa-hw) 仓库，作为参考实现（OpenAPI 代码生成、接口/实现分离、JWT + RBAC、状态机建模），不纳入本仓库的演进范围。
