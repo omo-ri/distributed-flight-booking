@@ -324,12 +324,41 @@ make test                              # pytest：16 个集成 + E2E 测试
 go test -race -count=1 ./...           # Go 单元测试（在各服务目录下跑）
 ```
 
-压测（k6，10 VU / 30 秒，阈值 p95 < 500ms、错误率 < 1%）：
+压测（k6，三个场景）：
 
 ```bash
-docker run --rm --network host -v "$PWD/k6:/scripts" -w /scripts \
-  -e BASE_URL=http://localhost:8080 grafana/k6:0.55.0 run script.js
+make loadtest-seed          # 灌压测专用航班（不在迁移里，是测试装置）
+make loadtest-steady        # 平峰：恒定 500 QPS 混合，阈值 p95<50ms、错误率<1%
 ```
+
+找容量拐点要跑两遍，**先闭环摸底再开环突破**：
+
+```bash
+make loadtest-write-recon                 # 闭环加 VU，读出吞吐平台 X_max
+make loadtest-write-ladder RATE_MAX=654   # 开环按 X_max 铺阶梯，0.5×–1.5×
+```
+
+`read` 场景同理（`loadtest-read-recon` / `loadtest-read-ladder`）。每次跑完自动打印分档曲线，也可以单独看：
+
+```bash
+python3 k6/analyze_ladder.py write-ladder
+```
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `BASE_URL` | `http://localhost:8080` | 被测入口 |
+| `SCENARIO` | `steady` | `steady` / `read` / `write` |
+| `MODE` | `ladder` | `recon` 闭环摸底 / `ladder` 开环阶梯 |
+| `RATE` | `500` | `steady` 的恒定速率 |
+| `P95_MS` | `50` | `steady` 的 p95 阈值（ms） |
+| `RATE_MAX` | 推算兜底 | `ladder` 的阶梯中心，**应填 recon 实测的 `X_max`** |
+| `VU_MAX` | 读 400 / 写 200 | `recon` 的 VU 上限 |
+| `STEPS` / `STEP_DURATION` / `RAMP_DURATION` | 6 / 45s / 10s | 阶梯形状 |
+| `MAX_VUS` | 1000 | 开环的 VU 池上限；不够大就会变成新天花板 |
+
+调阶梯形状用 `K6_EXTRA`：`make loadtest-read-recon K6_EXTRA="-e STEPS=4 -e STEP_DURATION=30s"`
+
+**CI 里的 k6 不是容量门禁**：runner 规格与开发机差一个数量级，判不了容量，只跑 `steady` 烟雾档。容量结论只能来自本机，写进 `docs/reports/load/` 并记录机器配置。
 
 ## 8. 出问题时
 

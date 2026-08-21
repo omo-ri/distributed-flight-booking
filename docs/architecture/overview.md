@@ -210,7 +210,21 @@ flight-service 是 gRPC，但**刻意复用 `http_*` 指标名**（`flight-servi
 |---|---|---|
 | 单元 | `go test -race` | 熔断器状态机、gRPC handler |
 | 集成 + E2E | pytest（16 个用例） | 全栈起容器，走真实 HTTP；E2E 用例直连两个 PostgreSQL 校验 `bookings` 行、`seat_reservations` 行、`available_seats` 数值在 create → cancel 全周期的正确性 |
-| 负载 | k6 | 10 VU / 30s，读 + 创建-取消配对（库存净变化为 0，可重复执行）；阈值 p95<500ms、错误率<1% |
+| 负载 | k6 | 三个场景，见下表；CI 只跑 `steady` 且降速降标准 |
+
+`k6/script.js` 由 `SCENARIO` / `MODE` 两个环境变量选择跑什么：
+
+| `SCENARIO` | 打谁 | 发压模式 | 回答什么 |
+|---|---|---|---|
+| `steady` | 多航班，读写 20:1 混合 | 恒定 500 QPS | 平峰下 p95 与错误率达标吗 |
+| `read` | 打散到 50 个航班，只压 `GET /flights/{id}` | `MODE=recon` 闭环 / `MODE=ladder` 开环阶梯 | 读路径吞吐上限与拐点 |
+| `write` | 锁定 1 个航班，只压 `POST /bookings` | 同上 | 单航班行锁上限与过载后的表现 |
+
+两个阶梯场景须先 `recon` 后 `ladder`：`recon` 用 `ramping-vus` 测出吞吐平台 `X_max`，`ladder` 再用 `ramping-arrival-rate` 自 `0.5×` 铺到 `1.5×X_max`。入口是 `Makefile` 的 `loadtest-*` 目标，曲线由 `k6/analyze_ladder.py` 按档打印。
+
+409 被 `setResponseCallback` 排除出 `http_req_failed`（`k6/script.js:53`）—— 座位不足是正常业务拒绝，不是故障。
+
+压测航班由 `k6/loadtest-seed.sql` 单独灌入（`make loadtest-seed`），**不在迁移里**：它是测试装置，不是系统的一部分。写场景那个航班 500 万座，保证整个压测窗口内库存不会耗尽。
 
 CI（`.github/workflows/ci.yml`）四个 job：
 
@@ -218,10 +232,10 @@ CI（`.github/workflows/ci.yml`）四个 job：
 build ─┐
        ├─► integration  （compose 起栈 → 等就绪 → 查 Prometheus 确认 target up → pytest → 导出容器日志）
 unit ──┘
-       └─► load-test    （compose 起栈 → k6 → verify_metrics.py 查 Prometheus 验 SLI → 违反则失败）
+       └─► load-test    （compose 起栈 → 灌压测航班 → k6 steady 烟雾跑 → verify_metrics.py 查 Prometheus 验 SLI）
 ```
 
-`load-test` 这个 job 是这套 CI 里最有价值的部分：**它让性能退化和错误率上升能够阻断合并**，而不只是测试挂了才阻断。
+`load-test` 里的 k6 **不是容量门禁**：runner 规格与开发机差一个数量级，判不了容量（[`conventions/testing.md`](../conventions/testing.md) § 6）。它只回答"跑得起来、没崩、没有数量级退化"。容量结论只能来自开发机跑 `read` / `write` 阶梯，产出写入 `docs/reports/load/`。
 
 ## 10. 当前架构的定位
 

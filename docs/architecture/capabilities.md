@@ -209,7 +209,7 @@ Prometheus 抓取配置、告警规则、Grafana 数据源、Grafana 看板 JSON
 | 单元（带 `-race`） | `*/internal/**/**_test.go` | 熔断器状态机、gRPC handler |
 | 集成 | `tests/test_api.py` | 15 |
 | E2E（直连双库校验） | `tests/test_e2e_db.py` | 1 |
-| 负载 | `k6/script.js` | p95/错误率/检查通过率三个阈值 |
+| 负载 | `k6/script.js` | 三个场景（`steady` / `read` / `write`），阶梯场景带闭环+开环两种模式 |
 
 ### F-2 E2E 校验穿透到数据库 ✅
 
@@ -219,7 +219,24 @@ Prometheus 抓取配置、告警规则、Grafana 数据源、Grafana 看板 JSON
 
 ### F-3 可重复的负载脚本 ✅
 
-`k6/script.js` —— 创建和取消配对执行，库存净变化为 0，脚本可以反复跑而不会耗尽座位。这是负载脚本能进 CI 的前提。
+`k6/script.js` —— `steady` 场景里创建和取消配对执行，库存净变化为 0；`write` 场景打的是 `k6/loadtest-seed.sql` 灌进去的 500 万座航班，压不干。两条路径都可以反复跑而不耗尽座位，这是负载脚本能进 CI 的前提。
+
+### F-4 开环压测能测出拐点 ✅
+
+`k6/script.js:137` —— `read` / `write` 两个场景用 `ramping-arrival-rate` 按固定速率发压，不管系统回不回得过来。闭环下 `VU数 = 吞吐 × 延迟` 是恒等式，饱和后延迟随 VU 严格线性增长，看不到过载时的非线性恶化；开环才能让请求真的排队。
+
+配套的两件东西：
+
+- `k6/script.js:125` 的 `MODE=recon`（`ramping-vus`）先测出吞吐平台 `X_max`，开环阶梯的范围由它决定而不是由推算决定
+- `k6/script.js:165` 的 `abortOnFail`：持续半数请求失败即中止，不再往一具卡死的系统上加压
+
+### F-5 压测口径排除正常业务拒绝 ✅
+
+`k6/script.js:53` —— `setResponseCallback` 把 409 排除出 `http_req_failed`。座位不足是正常业务结果（`design/system-design.md` § 3.3），把它计入错误率就会在压测侧犯下 [D-02](../tasks/D-02-error-rate-sli-server-errors-only.md) 在 SLI 侧犯的同一个错误。
+
+### F-6 阶梯曲线可读 ✅
+
+`k6/analyze_ladder.py` —— k6 收尾的 summary 只给全程一个 p95，那是拐点前后混在一起的数。这个脚本按阶梯档切开 CSV，打印每档的实际速率、p50/p95/p99、2xx/409/其他错误占比与状态码分布，并指出拐点落在哪一档。阶梯定义由 `k6/script.js` 的 `handleSummary` 写进 `k6/out/<run>.stages.json`，不在两处重复。
 
 ---
 
@@ -274,7 +291,7 @@ booking-service 有 `middleware.RequestID()`，但这个 ID **没有通过 gRPC 
 
 ### H-4 一键操作 🟡 覆盖有限
 
-`Makefile` 有 `proto`/`up`/`down`/`run`/`test`/`stop`。缺少 lint、format、单跑 k6、生成报告等目标。
+`Makefile` 有 `proto`/`up`/`down`/`run`/`test`/`stop`，以及压测的 `loadtest-seed` 与四个 `loadtest-*` 目标。缺少 lint、format、生成报告等目标。
 
 ---
 

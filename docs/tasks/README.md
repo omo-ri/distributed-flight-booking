@@ -24,7 +24,7 @@
 | [T-04](./T-04-booking-l2-tests.md) | booking L2：本地 repository + pb 契约桩 | 🔴 critical | todo | **D-19 的复现载体** |
 | [T-08](./T-08-cache-interface.md) | 缓存抽接口 + `nopCache` | 🟠 major | todo | 阻塞 T-09；**有 typed-nil 地雷** |
 | [T-09](./T-09-in-memory-cache-fake.md) | 缓存的内存假实现 | 🟡 minor | todo | 阻塞 T-03 的 service 层部分 |
-| [T-06](./T-06-k6-three-scenarios.md) | k6 改造成三场景，开环压测 | 🟠 major | todo | 阻塞 T-07；**无前置，可最先做** |
+| [T-06](./T-06-k6-three-scenarios.md) | k6 改造成三场景，开环压测 | 🟠 major | doing | 阻塞 T-07；写路径拐点已实测，缺 `steady` 与 `read/ladder` 两跑 |
 | [T-07](./T-07-local-capacity-baseline.md) | 本机容量基线报告 | 🟠 major | todo | 阻塞 D-27 / D-25 / D-16 |
 | [T-05](./T-05-four-tier-ci-topology.md) | 四档落成：Makefile + CI 拓扑 + 镜像复用 + `.dockerignore` | 🟠 major | todo | 需要 T-02/T-03/T-04 先有东西可编排 |
 
@@ -113,7 +113,7 @@ D-11 结构化日志 ──► D-20 的完整修复（对外不回显错误详�
 D-25 全链路超时 ──► D-21 HALF_OPEN 限流（探测请求不返回，熔断器会卡死在 HALF_OPEN）
 
 （D-25 的超时值与 D-27 的桶边界都必须由实测数据决定，而实测数据由 T-07 产出——见上方第一张图。
-  `k6/script.js:82` 的 sleep 让唯一一次基线只测到了 k6 自己的天花板。）
+  2026-05-29 那次基线被脚本里的 sleep 限住，只测到了 k6 自己的天花板；T-06 已把它换成开环阶梯。）
 
 D-19 错误码映射 ──► D-02 错误率 SLI（D-02 修聚合口径，D-19 修数据源头，只修一头不干净）
 ```
