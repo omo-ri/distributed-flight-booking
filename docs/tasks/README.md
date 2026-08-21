@@ -5,6 +5,7 @@
 - **D-xx** —— 已有代码里的**具体缺陷**，来源是对现有实现的审查
 - **G-xx** —— 需要从零建设的**能力**，来源是 [`../plans/gap-analysis.md`](../plans/gap-analysis.md)（当前尚未拆分为任务，随阶段推进逐步拆出）
 - **T-xx** —— **测试基础设施**的建设条目。它既不是已有代码的缺陷，也不是 JD 能力缺口，所以单开一个序列。文件用下方模板的变体：`现象 / 根因` 两节换成 `为什么需要 / 做什么`，其余相同
+- **R-xx** —— **结构重构**条目，来源是 [`../design/code-structure.md`](../design/code-structure.md)。判据是「读一条业务规则要同时理解几种技术细节」，不是「有没有 bug」。文件模板同 T-xx 的变体
 
 状态流转（`todo` → `doing` → 移入 `done/` 并同步 `architecture/capabilities.md`）的规则见 [`CLAUDE.md`](../../CLAUDE.md) § 3。**做完不搬文件 = 没做完。**
 
@@ -22,11 +23,33 @@
 | [T-02](./T-02-testcontainers-harness.md) | testcontainers 骨架 + fixture builder（两模块各一套） | 🔴 critical | todo | 阻塞 T-03 / T-04 |
 | [T-03](./T-03-flight-l2-tests.md) | flight L2：真实 SQL、并发事务、service 层 | 🔴 critical | todo | **D-23 的复现载体** |
 | [T-04](./T-04-booking-l2-tests.md) | booking L2：本地 repository + pb 契约桩 | 🔴 critical | todo | **D-19 的复现载体** |
-| [T-08](./T-08-cache-interface.md) | 缓存抽接口 + `nopCache` | 🟠 major | todo | 阻塞 T-09；**有 typed-nil 地雷** |
-| [T-09](./T-09-in-memory-cache-fake.md) | 缓存的内存假实现 | 🟡 minor | todo | 阻塞 T-03 的 service 层部分 |
+| [T-08](./T-08-cache-interface.md) | 缓存抽接口 + `nopCache` | 🟠 major | 由 [R-09](./R-09-flight-service-ports.md) 取代 | 描述按旧结构写的（没说接口归谁定义、返回什么类型） |
+| [T-09](./T-09-in-memory-cache-fake.md) | 缓存的内存假实现 | 🟡 minor | todo | 阻塞 T-03 的 service 层部分；**R-09 之后要重写**（实现 service 定义的端口） |
 | [T-06](./T-06-k6-three-scenarios.md) | k6 改造成三场景，开环压测 | 🟠 major | doing | 阻塞 T-07；写路径拐点已实测，缺 `steady` 与 `read/ladder` 两跑 |
 | [T-07](./T-07-local-capacity-baseline.md) | 本机容量基线报告 | 🟠 major | todo | 阻塞 D-27 / D-25 / D-16 |
 | [T-05](./T-05-four-tier-ci-topology.md) | 四档落成：Makefile + CI 拓扑 + 镜像复用 + `.dockerignore` | 🟠 major | todo | 需要 T-02/T-03/T-04 先有东西可编排 |
+
+### 代码结构落地 · R 序列
+
+排期与理由见 [`../plans/code-structure-rollout.md`](../plans/code-structure-rollout.md)，设计推演见 [`../design/code-structure.md`](../design/code-structure.md)。**一次一条，每条独立提 PR。**
+
+第 0 批（R-01 ~ R-05）不依赖分层重构，随时可做；第 2、3 步（R-06 ~ R-13）串在 T-01 之后。
+
+| ID | 任务 | 级别 | 状态 | 阻塞 / 影响 |
+|---|---|---|---|---|
+| [R-01](./R-01-logctx-semantic-wrappers.md) | `logctx` 语义化封装 + 按字段的写入语义 | 🟠 major | todo | 阻塞 R-02 / R-03；修 `degraded` 静默丢原因 |
+| [R-02](./R-02-flight-grpc-recovery.md) | flight 加 gRPC recovery 拦截器 | 🔴 critical | todo | **现在一次 panic 就是进程崩溃** |
+| [R-03](./R-03-booking-panic-stack.md) | booking panic 堆栈进汇总行 | 🟠 major | todo | 现在堆栈是非 JSON 孤儿行 |
+| [R-04](./R-04-trace-id-validation.md) | trace_id 32-hex 校验（两侧） | 🟠 major | todo | Loki 落地前必须有 |
+| [R-05](./R-05-component-state-log-level.md) | 组件状态行一律 `Warn` | 🟠 major | todo | **要改 `CLAUDE.md`，单独 PR** |
+| [R-06](./R-06-flight-domain-package.md) | flight `domain` 包 + 领域错误 | 🟠 major | todo | 需 T-01 先落地 |
+| [R-07](./R-07-flight-repository-adapter.md) | flight repository 改出站适配器 | 🟠 major | todo | 阻塞 R-08 / R-09 |
+| [R-08](./R-08-flight-handler-adapter.md) | flight handler 改入站适配器 | 🟠 major | todo | 含 D-20 的 flight 侧；D-19 的数据源头 |
+| [R-09](./R-09-flight-service-ports.md) | flight `ports.go` + 缓存端口化 | 🟠 major | todo | **取代 T-08**；阻塞 T-09、R-10 |
+| [R-10](./R-10-booking-domain-package.md) | booking `domain` 包 + sentinel 迁出 | 🟠 major | todo | 阻塞 R-11 / R-12 |
+| [R-11](./R-11-booking-repository-adapter.md) | booking repository 改出站适配器 | 🟠 major | todo | 阻塞 R-13 |
+| [R-12](./R-12-booking-grpcclient-adapter.md) | booking grpcclient 改出站适配器 | 🟠 major | todo | **含 D-19**；阻塞 R-13 |
+| [R-13](./R-13-booking-service-ports.md) | booking `ports.go` + `handler/errors.go` | 🟠 major | todo | 含 D-20 的 booking 侧；之后 T-03 / T-04 要重写 |
 
 ### 阶段 0 · 修复阻塞缺陷
 
@@ -117,6 +140,22 @@ D-25 全链路超时 ──► D-21 HALF_OPEN 限流（探测请求不返回，�
   2026-05-29 那次基线被脚本里的 sleep 限住，只测到了 k6 自己的天花板；T-06 已把它换成开环阶梯。）
 
 D-19 错误码映射 ──► D-02 错误率 SLI（D-02 修聚合口径，D-19 修数据源头，只修一头不干净）
+
+R-01 logctx 封装 ──┬──► R-02 flight recovery
+                   └──► R-03 booking 堆栈
+（R-04 / R-05 独立，随时可做）
+
+T-01 app 抽取 ──► R-06 flight domain ──► R-07 flight repo ──┬──► R-08 flight handler（D-20 flight 侧）
+                                                            └──► R-09 flight ports ──┬──► T-09 缓存 fake
+                                                                （取代 T-08）         └──► R-10 booking domain
+                                                                                            │
+                                            ┌───────────────────────────────────────────────┤
+                                            ├──► R-11 booking repo ────────┐
+                                            └──► R-12 booking grpcclient ──┴──► R-13 booking ports
+                                                 （含 D-19）                     （D-20 booking 侧）
+                                                                                      │
+                                                                                      └──► T-03 / T-04 重写
+                                                                                           （一批断言 L2 降 L1）
 ```
 
 **同包同改建议**：[D-01](./D-01-circuit-breaker-error-classification.md) 与 [D-21](./D-21-half-open-no-probe-limit.md) 都在 `internal/circuitbreaker`，一次改完；D-01 要加的熔断器指标正好能验证 D-21 的效果。
