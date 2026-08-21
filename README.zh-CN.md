@@ -292,8 +292,11 @@ curl -X POST http://localhost:8080/bookings/8e56216a-14b0-486e-8b9a-2a42099cb893
 | `CB_ERROR_THRESHOLD` | `5` | 窗口内多少次失败后熔断 | booking |
 | `CB_TIMEOUT_SECONDS` | `30` | OPEN 持续多久后进 HALF_OPEN | booking |
 | `CB_WINDOW_SECONDS` | `60` | 失败统计窗口 | booking |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`，拼错退回 `info` 并打一条 warn | booking |
 
-来源：`booking-service/cmd/main.go:35-106`、`flight-service/cmd/main.go:30-91`。
+`LOG_LEVEL` **目前只对 booking 生效**：flight-service 还在用标准库 `log.Printf`，没有级别概念（[D-11](./docs/tasks/D-11-structured-logging.md)）。压测时设 `warn` 关掉正常请求路径的日志——booking 的 `requestLogger` 每个请求打一行，读路径一次跑几百万请求就是几个 G。
+
+来源：`booking-service/cmd/main.go:29-110`、`flight-service/cmd/main.go:30-91`。
 
 ## 6. 看监控
 

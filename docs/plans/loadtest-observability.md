@@ -8,7 +8,7 @@
 T-06 的 k6 脚本已经能测出东西（写路径拐点已实拍到），但**跑一次的代价高到无法正常工作**：
 
 - 一次 `read` 跑产出 8.4 GB CSV。已在工作区修掉——聚合搬进 k6 内部，改吐几 KB 的 `report.json`
-- 两个服务在**正常请求路径**上打日志，违反 [`CLAUDE.md`](../../CLAUDE.md) § 4。`read/recon` 那跑 385 万请求 × 每请求至少 2 行 = 770 万行，几个 G
+- 两个服务在正常请求路径上打日志，而**没有任何关掉它的开关**。`read/recon` 那跑 385 万请求 × 每请求至少 2 行 = 770 万行，几个 G。请求路径日志本身是允许的（[`CLAUDE.md`](../../CLAUDE.md) § 4），但它必须配 `LOG_LEVEL`——缺的是开关，不是日志
 - `k6/script.js` 437 行里只有约 30 行是"发什么请求"，测试逻辑被 265 行基础设施和 101 行注释埋住
 
 结果是 T-06 有三条验收项**一次都没跑过**（`steady` 场景、`read/ladder`），而已经拿到的 `read` 路径 `X_max ≈ 18894 req/s` 证据已丢失且高度可疑。
@@ -63,19 +63,23 @@ flight-service 用标准库 `log.Printf`，**没有级别概念**，`LOG_LEVEL` 
 
 调用点只有 3 处，全在 `flight-service/cmd/main.go:53,59,85`；**无测试引用这些构造函数**，改动低风险。
 
+**口径**：请求路径日志全部保留，只换载体与级别——`log.Printf` → `slog` + JSON，级别 `Info`，由 `LOG_LEVEL` 统一关。压测时 `LOG_LEVEL=warn`，这 10 处一条不落盘。
+
 | 现状 | 处数 | 改成 |
 |---|---|---|
-| `[CACHE] HIT` / `MISS` | 4 | **删日志**，换 `flight_cache_operations_total{cache,op,result}` counter |
-| `[CACHE] SET` | 2 | **删**——成功写缓存没人需要看 |
-| `[CACHE] DEL` | 3 | **删** |
-| `[AUTH] OK` | 1 | **删**——量等于总请求数 |
-| `[CACHE] SET ERR` | 2 | 留，`slog.Warn`（异常但已自动降级） |
-| `[AUTH] REJECTED` | 2 | 留，`slog.Warn` |
-| `service/flight.go:116` 失效失败 | 1 | 留，`slog.Warn` |
+| `[CACHE] HIT` / `MISS` | 4 | `slog.Info`（请求级信息）；**另加** `flight_cache_operations_total{cache,op,result}` counter——见阶段三 |
+| `[CACHE] SET` | 2 | `slog.Info` |
+| `[CACHE] DEL` | 3 | `slog.Info` |
+| `[AUTH] OK` | 1 | `slog.Info` |
+| `[CACHE] SET ERR` | 2 | `slog.Warn`（异常但已自动降级） |
+| `[AUTH] REJECTED` | 2 | `slog.Warn` |
+| `service/flight.go:116` 失效失败 | 1 | `slog.Warn` |
 
 ## 阶段三 · 补缓存指标
 
-删掉 HIT/MISS 日志会让缓存变成黑盒——全仓库现在**只有 3 个应用指标**（`flight-service/internal/metrics/metrics.go:19-33`，booking 侧同构），没有任何缓存指标。而"18894 req/s 是不是全部命中缓存"恰恰是这轮压测最该知道的事之一。CLAUDE.md § 4：**没有指标的机制等于不存在。**
+全仓库现在**只有 3 个应用指标**（`flight-service/internal/metrics/metrics.go:19-33`，booking 侧同构），没有任何缓存指标。CLAUDE.md § 4：**没有指标的机制等于不存在。**
+
+HIT/MISS 日志保留不能替代这条：压测时 `LOG_LEVEL=warn`，那些日志本来就不落盘，而"18894 req/s 是不是全部命中缓存"恰恰是这轮压测最该知道的事之一——那个数只能由指标回答。日志回答"这一条请求命中了没有"，指标回答"这一档的命中率是多少"，两个问题不同。
 
 | # | 动作 | 文件 |
 |---|---|---|
@@ -173,12 +177,13 @@ k6 支持本地相对 import，跑法不变（Makefile 已挂载整个 `k6/` 到
 |---|---|---|---|
 | **D-11 的一部分** | 阶段一 1.2 + 阶段二（两个服务的 `LOG_LEVEL` 与 flight 迁 slog） | 已登记，补充 booking `requestLogger` 这个实例 | 无 |
 | **D-10 的一部分** | 阶段一 1.1（compose 日志上限） | 已登记，把"资源限制"扩到磁盘 | 无 |
-| **新 D-xx** | 阶段三（缓存指标）+ `redis.go` 的 `err != redis.Nil` 区分 | 新登记：缓存无指标、缓存故障伪装成未命中 | 阻塞阶段二（删日志前要先有指标） |
+| **新 D-xx** | 阶段三（缓存指标）+ `redis.go` 的 `err != redis.Nil` 区分 | 新登记：缓存无指标、缓存故障伪装成未命中 | 无（与阶段二可并行） |
 | **T-06 剩余** | 阶段一 1.3/1.4 + 阶段四 + 五 + 六 + 七 | 已登记，`status: doing` | 依赖上面三条先完成 |
 
-拆的时候注意两处**真依赖**（不是排序偏好）：
+拆的时候注意一处**真依赖**（不是排序偏好）：
 
-1. **缓存指标必须先于删缓存日志**——否则中间会有一段时间缓存完全不可见
-2. **日志止血必须先于阶段六的任何一跑**——`read/ladder` 要压到两万级 req/s，不修就会第二次被淹
+**日志止血必须先于阶段六的任何一跑**——`read/ladder` 要压到两万级 req/s，`LOG_LEVEL` 不到位就会第二次被淹。
+
+（原先还有一条"缓存指标必须先于删缓存日志"。日志改成保留 + `LOG_LEVEL` 关之后这条依赖消失了，阶段二与阶段三可以并行。）
 
 阶段四（拆脚本）与阶段五（改口径）可以并行，它们改的是 `k6/` 下不同的东西。

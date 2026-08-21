@@ -1164,7 +1164,7 @@ booking-service 在 gRPC metadata 里附 `x-api-key`（`grpcclient/flight.go:50-
 - **默认配置下认证形同虚设**：`AUTH_API_KEY` 的默认值是空字符串（两个服务的 `main.go` 都是 `envOrDefault("AUTH_API_KEY", "")`）。两边都不配置时，booking-service 发送 `x-api-key: ""`，flight-service 比较 `"" == ""` → **通过**。
   安全机制在默认配置下静默失效，而且**没有任何警告**——这比"没有认证"更危险，因为它看起来是有保护的
 - **拦截器顺序导致认证失败会污染 SLI**：`main.go:83-86` 里 metrics 拦截器在 auth 拦截器**之前**，所以被拒绝的请求也会计入 `http_requests_total` 和 `http_request_errors_total`。配错 key 会表现为错误率飙升 → 触发 `HighErrorRate` 告警（这个方向其实是对的，但它和真实故障混在一起了）
-- 每次调用打一条 `[AUTH] OK` 日志——正常请求路径上的日志，违反 CLAUDE.md 第 4 节
+- 每次调用打一条 `[AUTH] OK` 日志。请求路径日志本身没问题（CLAUDE.md 第 4 节），问题是 flight-service 用标准库 `log.Printf`，**没有级别概念也就没有开关**——压测时这一条乘以总请求数，关不掉（D-11）
 
 **🔧 可以更好**
 - **立刻** → `AUTH_API_KEY` 为空时启动即拒绝（`log.Fatal`），或者至少打一条 Warn 并暴露一个 `auth_disabled=1` 的指标。**代价**：本地 `go run` 不配环境变量就跑不起来了，违反 CLAUDE.md 第 4 节"代码默认值保证本地能直接 `go run`"的原则——**折中方案是保留默认值但强制打 Warn + 指标**，让"降级运行"可见而不是可静默。

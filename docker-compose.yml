@@ -126,6 +126,8 @@ services:
     logging: *default-logging
     environment:
       HTTP_PORT: "8080"
+      # 压测时切成 warn 关掉请求日志：LOG_LEVEL=warn docker compose up -d booking-service
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: booking-db
       DB_PORT: "5432"
       DB_USER: booking

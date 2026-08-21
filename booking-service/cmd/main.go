@@ -26,8 +26,12 @@ import (
 
 func main() {
 	// Structured JSON logger
-	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logLevel, levelErr := parseLogLevel(envOrDefault("LOG_LEVEL", "info"))
+	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(log)
+	if levelErr != nil {
+		log.Warn("invalid LOG_LEVEL, falling back to info", "value", os.Getenv("LOG_LEVEL"), "error", levelErr)
+	}
 
 	ctx := context.Background()
 
@@ -147,6 +151,17 @@ func runMigrations(cfg repository.PostgresConfig) error {
 		return err
 	}
 	return nil
+}
+
+// parseLogLevel 把 LOG_LEVEL 解析成 slog.Level。接受 debug / info / warn / error
+// （大小写不敏感），也接受 slog 的偏移写法如 "info+2"。解析不了就退回 info 并
+// 把原值报出来——压测时把它设成 warn，正常请求路径的日志就不再落盘。
+func parseLogLevel(s string) (slog.Level, error) {
+	var lvl slog.Level
+	if err := lvl.UnmarshalText([]byte(s)); err != nil {
+		return slog.LevelInfo, err
+	}
+	return lvl, nil
 }
 
 func envOrDefault(key, fallback string) string {
