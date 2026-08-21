@@ -34,8 +34,10 @@ go.work.sum
 *.http
 
 # AI 协作：CLAUDE.md 是规则的唯一权威，必须进版本控制；
+# 协作流程（.claude/skills/）同理，要能被 PR 评审；
 # 个人偏好配置（.claude/settings.local.json 等）不进
-.claude/
+.claude/*
+!.claude/skills/
 
 # Python
 __pycache__/
