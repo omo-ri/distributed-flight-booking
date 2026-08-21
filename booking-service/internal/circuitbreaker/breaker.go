@@ -1,8 +1,9 @@
 package circuitbreaker
 
 import (
+	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -107,9 +108,29 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 }
 
+// State 返回当前状态，供 grpcclient 往汇总行挂 cb 字段。
+func (cb *CircuitBreaker) State() State {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	return cb.state
+}
+
+// setState 打的是组件状态变更，不属于任何一条请求，所以独立成行（CLAUDE.md § 4）。
+// 熔断打开影响的是它之后的所有请求，埋进某一条请求的字段里就找不到了。
+// 级别：翻开是「异常但已自动处理」→ Warn；恢复是状态变更 → Info。
 func (cb *CircuitBreaker) setState(newState State) {
-	if cb.state != newState {
-		log.Printf("[CIRCUIT-BREAKER] %s → %s", cb.state, newState)
-		cb.state = newState
+	if cb.state == newState {
+		return
 	}
+	lvl := slog.LevelInfo
+	if newState == Open {
+		lvl = slog.LevelWarn
+	}
+	slog.Default().Log(context.Background(), lvl, "circuit breaker state changed",
+		"from", cb.state.String(),
+		"to", newState.String(),
+		"error_count", cb.errorCount,
+		"error_threshold", cb.errorThreshold,
+	)
+	cb.state = newState
 }

@@ -102,7 +102,7 @@
 
 ### 任务
 
-1. **统一结构化日志** —— flight-service 从标准库 `log` 换成 `slog` JSON；清理高频路径上的噪音日志（[D-11](../tasks/D-11-structured-logging.md)）
+1. **统一结构化日志** —— flight-service 从标准库 `log` 换成 `slog` JSON；清理高频路径上的噪音日志（[D-11](../tasks/done/D-11-structured-logging.md)）
 2. **trace_id 贯通** —— booking 侧生成，通过 gRPC metadata 传给 flight，两侧日志都带上
 3. **OpenTelemetry** —— 两个服务接入 SDK，HTTP 和 gRPC 都自动埋点，导出到 Tempo（或 Jaeger）
 4. **Loki + Alloy** —— 日志采集入栈，Grafana 加 Loki 数据源

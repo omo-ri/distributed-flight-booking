@@ -179,6 +179,14 @@ flights                      seat_reservations              bookings
 | `http_request_errors_total` | counter | service, method, endpoint, error_type |
 | `http_request_duration_seconds` | histogram | service, method, endpoint |
 
+flight-service 另有一个自己的指标：
+
+| 指标 | 类型 | 标签 | 取值集合 |
+|---|---|---|---|
+| `flight_cache_operations_total` | counter | cache, op, result | `{flight, search}` × `{get, set, del}` × `{hit, miss, ok, error}` |
+
+它是缓存的唯一可观测出口：汇总行上的 `cache` 字段答"这一条请求命中了没有"，这个 counter 答"这一档的命中率是多少"——压测时 `LOG_LEVEL=warn`，日志本来就不落盘，那个数只能由它回答。读路径目前只会产出 `hit` / `miss`（连接失败被当成 miss，见 [D-29](../tasks/D-29-cache-error-masked-as-miss.md)）。
+
 flight-service 是 gRPC，但**刻意复用 `http_*` 指标名**（`flight-service/internal/metrics/metrics.go:19`），这样一条 PromQL 能同时覆盖两个服务。
 
 **基数控制**：HTTP 侧的 `endpoint` 用路由模板 `/bookings/:id` 而非实际 URL；gRPC 侧用 `info.FullMethod`。如果用实际 URL，每个 UUID 都会变成一个新时间序列，Prometheus 内存会被打爆 —— 这是监控系统最常见的事故原因之一。

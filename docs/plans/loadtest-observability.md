@@ -1,6 +1,6 @@
 # 压测可观测性收尾计划
 
-> 跨 [T-06](../tasks/T-06-k6-three-scenarios.md)、[D-10](../tasks/D-10-container-resource-limits.md)、[D-11](../tasks/D-11-structured-logging.md) 的一次性执行计划。
+> 跨 [T-06](../tasks/T-06-k6-three-scenarios.md)、[D-10](../tasks/D-10-container-resource-limits.md)、[D-11](../tasks/done/D-11-structured-logging.md) 的一次性执行计划。
 > 完成后拆进对应任务条目并归档本文件——拆分建议见文末。
 
 ## 为什么
@@ -34,7 +34,8 @@ T-06 的 k6 脚本已经能测出东西（写路径拐点已实拍到），但**
 | `steady` 口径 | 拆掉 create/cancel 配对，恢复"一次迭代 = 一个请求" | 改文档迁就代码会让 `rate` 永远带一个隐式换算系数 |
 | 怎么判 k6 饱和 | 主判据看服务端 Grafana，辅以 `docker stats` | 双 k6 进程对照最严谨，但同机压测下对照性打折，且要跑双份时间 |
 | `analyze_ladder.py` | 直接删 | 它已跑不起来（缺 `stages.json` 产出源），核心优化是为不再产出的 GB 级 CSV 做的 |
-| flight-service 日志 | 止血 + 迁 `slog`/JSON/`LOG_LEVEL` | 不迁会留下半残开关（`LOG_LEVEL` 只对一个服务有效）；trace_id 贯通有真设计不确定性，留给 D-11 |
+| flight-service 日志 | 止血 + 迁 `slog`/JSON/`LOG_LEVEL` | 不迁会留下半残开关（`LOG_LEVEL` 只对一个服务有效）|
+| 日志口径（**执行时改的**） | 一次请求一条汇总行，下层不打日志、把字段挂进 `logctx` | 原定"请求路径日志全部保留、只换载体与级别"——那只是把 11 行/请求变成"11 行但关得掉"，行数一条没减。trace_id 也一并做了，没留给以后 |
 
 **分支**：当前在 `docs/design-notes`，工作区已有 15 个改动文件。这一轮跨代码+文档，建议先理清现有改动，另开 `chore/loadtest-observability`。
 
@@ -51,44 +52,37 @@ T-06 的 k6 脚本已经能测出东西（写路径拐点已实拍到），但**
 
 `envOrDefault` 两个服务都已有（`booking-service/cmd/main.go:152`、`flight-service/cmd/main.go:118`），直接复用。
 
-## 阶段二 · flight-service 迁 slog（D-11 第 1、3 点）
+## 阶段二 · 重设计两个服务的日志输出 ✅（D-11 全部三点）
 
-flight-service 用标准库 `log.Printf`，**没有级别概念**，`LOG_LEVEL` 对它完全无效。27 处调用，其中 **10 处在请求路径上**。
+**原计划是"flight 迁 slog、请求路径日志全部保留、只换载体与级别"。执行时口径被推翻了**——保留全部分层日志只是把 11 行/请求变成"11 行但关得掉"，行数问题一条没解决。改成：
 
-| # | 动作 | 文件 |
+**一次请求一条汇总行。** 汇总行由入口打（booking 是 echo 中间件，flight 是新增的 gRPC 拦截器，位于链最外层），handler / service / cache / grpcclient **不持有 logger**，字段挂进各自的 `internal/logctx` 字段袋，收尾时一并写出。级别按 outcome 判：业务拒绝 `Info`、已自动处理的降级 `Warn`、5xx `Error`。
+
+| # | 动作 | 状态 |
 |---|---|---|
-| 2.1 | `main` 里建 `slog.New(slog.NewJSONHandler(os.Stdout, ...))` + `LOG_LEVEL`，与 booking 侧同构；6 处 `log.Fatalf` → `slog.Error` + `os.Exit(1)`（对齐 `booking-service/cmd/main.go:109-110`），5 处启动日志 → `slog.Info` | `flight-service/cmd/main.go` |
-| 2.2 | 构造函数注入 logger | `cache.NewRedisCache` / `NewRedisSentinelCache`（`redis.go:23,36`）、`auth.UnaryInterceptor`（`interceptor.go:15`）、`service.NewFlightService`（`flight.go:23`） |
-| 2.3 | 按下表处理 10 处请求路径日志 | `redis.go`、`interceptor.go` |
+| 2.1 | flight `main` 迁 `slog` + JSON + `LOG_LEVEL`，`log.Fatalf` → `Error` + `os.Exit(1)`，启动分步日志 + 一条 `config loaded` | ✅ |
+| 2.2 | 两个服务各建 `internal/logctx`（独立 module 各写一份） | ✅ |
+| 2.3 | 新增 `flight-service/internal/logging` 拦截器；booking 的 `requestLogger` 重写 | ✅ |
+| 2.4 | 删掉 booking 的 52 处分层日志、flight 的 12 处请求路径碎片；构造函数去掉 logger 参数 | ✅ |
+| 2.5 | trace_id 跨 gRPC metadata `x-trace-id` 贯通，`request_id` 字段改名 `trace_id` | ✅ |
+| 2.6 | L1 测试：`logctx`（含 `-race`）、级别映射表驱动、trace_id 两侧各测一半 | ✅ |
 
-调用点只有 3 处，全在 `flight-service/cmd/main.go:53,59,85`；**无测试引用这些构造函数**，改动低风险。
+**效果**：一次 `POST /bookings` 从 **11 行降到 3 行**（booking 1 + flight 2，一次下单是两次 RPC）；`LOG_LEVEL=warn` 时正常请求路径 **0 行**，熔断迁移、降级、5xx 仍然可见。实测记录见 [D-11](../tasks/done/D-11-structured-logging.md)。
 
-**口径**：请求路径日志全部保留，只换载体与级别——`log.Printf` → `slog` + JSON，级别 `Info`，由 `LOG_LEVEL` 统一关。压测时 `LOG_LEVEL=warn`，这 10 处一条不落盘。
+计划外的两处，都是实跑之后才看见的：`/metrics` 抓取不打汇总行（Prometheus 每 5 秒一条恒定噪音），go-redis 的库内日志经 `redis.SetLogger` 接进 slog（否则 flight 的输出里仍混着非 JSON 行，D-11 第 1 点不成立）。
 
-| 现状 | 处数 | 改成 |
+## 阶段三 · 补缓存指标 ✅
+
+删掉 HIT/MISS 日志之后，缓存在压测时会变成黑盒：`LOG_LEVEL=warn` 下汇总行的 `cache` 字段也不落盘，而"18894 req/s 是不是全靠缓存撑的"恰恰是这轮压测最该知道的事之一。日志答"这一条命中了没有"，指标答"这一档命中率多少"，两个问题不同。
+
+| # | 动作 | 状态 |
 |---|---|---|
-| `[CACHE] HIT` / `MISS` | 4 | `slog.Info`（请求级信息）；**另加** `flight_cache_operations_total{cache,op,result}` counter——见阶段三 |
-| `[CACHE] SET` | 2 | `slog.Info` |
-| `[CACHE] DEL` | 3 | `slog.Info` |
-| `[AUTH] OK` | 1 | `slog.Info` |
-| `[CACHE] SET ERR` | 2 | `slog.Warn`（异常但已自动降级） |
-| `[AUTH] REJECTED` | 2 | `slog.Warn` |
-| `service/flight.go:116` 失效失败 | 1 | `slog.Warn` |
-
-## 阶段三 · 补缓存指标
-
-全仓库现在**只有 3 个应用指标**（`flight-service/internal/metrics/metrics.go:19-33`，booking 侧同构），没有任何缓存指标。CLAUDE.md § 4：**没有指标的机制等于不存在。**
-
-HIT/MISS 日志保留不能替代这条：压测时 `LOG_LEVEL=warn`，那些日志本来就不落盘，而"18894 req/s 是不是全部命中缓存"恰恰是这轮压测最该知道的事之一——那个数只能由指标回答。日志回答"这一条请求命中了没有"，指标回答"这一档的命中率是多少"，两个问题不同。
-
-| # | 动作 | 文件 |
-|---|---|---|
-| 3.1 | 加 `flight_cache_operations_total{cache,op,result}` counter，`promauto` 声明方式与现有三个一致 | `flight-service/internal/metrics/metrics.go` |
-| 3.2 | 加"缓存命中率"面板（**改文件，不在 UI 点**） | `grafana/dashboards/infrastructure.json` |
+| 3.1 | `flight_cache_operations_total{cache,op,result}` counter | ✅ |
+| 3.2 | Grafana 两个面板：命中率、按 op/result 的操作速率（**改文件，不在 UI 点**） | ✅ |
 
 标签取值集合有上界：`cache ∈ {flight, search}`、`op ∈ {get, set, del}`、`result ∈ {hit, miss, ok, error}`。
 
-**不改** `redis.go:61-64` 那个"所有 err 都当 MISS"的问题（`redis.Nil` 与连接失败/超时不分）——它是一条独立缺陷，该单独登记，混进日志改造会让这次改动意图变混。`result` 标签给它留了位置，将来补 `error` 取值即可。
+**不改** `redis.go` 那个"所有 err 都当 MISS"的问题（`redis.Nil` 与连接失败/超时不分）——已单独登记为 [D-29](../tasks/D-29-cache-error-masked-as-miss.md)。`result` 标签给它留了 `error` 的位置。
 
 ## 阶段四 · 拆 k6 脚本（T-06）
 
@@ -173,17 +167,17 @@ k6 支持本地相对 import，跑法不变（Makefile 已挂载整个 `k6/` 到
 
 按"什么时候需要改它"和依赖关系，建议拆成四条：
 
-| 拆成 | 内容 | 归属 | 依赖 |
+| 拆成 | 内容 | 归属 | 状态 |
 |---|---|---|---|
-| **D-11 的一部分** | 阶段一 1.2 + 阶段二（两个服务的 `LOG_LEVEL` 与 flight 迁 slog） | 已登记，补充 booking `requestLogger` 这个实例 | 无 |
-| **D-10 的一部分** | 阶段一 1.1（compose 日志上限） | 已登记，把"资源限制"扩到磁盘 | 无 |
-| **新 D-xx** | 阶段三（缓存指标）+ `redis.go` 的 `err != redis.Nil` 区分 | 新登记：缓存无指标、缓存故障伪装成未命中 | 无（与阶段二可并行） |
-| **T-06 剩余** | 阶段一 1.3/1.4 + 阶段四 + 五 + 六 + 七 | 已登记，`status: doing` | 依赖上面三条先完成 |
+| **D-11** | 阶段一 1.2 + 阶段二（两个服务的 `LOG_LEVEL`、flight 迁 slog、汇总行口径、trace_id 贯通） | ✅ 已完成并归档到 `tasks/done/` | 2026-08-21 |
+| **D-10 的一部分** | 阶段一 1.1（compose 日志上限） | 已登记，把"资源限制"扩到磁盘 | ✅ 该部分已做，`mem_limit` / `cpus` 仍待 T-07 |
+| **D-29** | `redis.go` 的 `err != redis.Nil` 区分 | 新登记：缓存故障伪装成未命中 | todo |
+| **T-06 剩余** | 阶段一 1.3/1.4 + 阶段四 + 五 + 六 + 七 | 已登记，`status: doing` | todo |
 
-拆的时候注意一处**真依赖**（不是排序偏好）：
+缓存指标（阶段三）没有单独成条：它是**这次删掉 HIT/MISS 日志亲手造成的缺口**，跟着日志改造一起补完了。判据是"这次删掉什么就补什么，这次没碰的缺口不搭车"——所以熔断器无指标（属于 [D-01](../tasks/D-01-circuit-breaker-error-classification.md) 的修法与验收标准）没有搭这趟车。
 
-**日志止血必须先于阶段六的任何一跑**——`read/ladder` 要压到两万级 req/s，`LOG_LEVEL` 不到位就会第二次被淹。
+剩下一处**真依赖**（不是排序偏好）：
 
-（原先还有一条"缓存指标必须先于删缓存日志"。日志改成保留 + `LOG_LEVEL` 关之后这条依赖消失了，阶段二与阶段三可以并行。）
+**日志止血必须先于阶段六的任何一跑**——`read/ladder` 要压到两万级 req/s，`LOG_LEVEL` 不到位就会第二次被淹。这条现在已经满足：`LOG_LEVEL=warn` 两个服务的请求路径都是 0 行。
 
 阶段四（拆脚本）与阶段五（改口径）可以并行，它们改的是 `k6/` 下不同的东西。

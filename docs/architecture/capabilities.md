@@ -11,7 +11,7 @@
 | 数据一致性 | 🟡 中 | 单库事务扎实，跨库一致性有已知缺口 |
 | 韧性工程 | 🟢 强 | 重试 + 熔断 + 幂等三件套齐全且正确组合 |
 | 指标监控 | 🟢 强 | 指标设计考虑了基数，SLO 进了 CI 门禁 |
-| 日志 | 🔴 弱 | 两个服务日志格式不一致，无聚合，无关联 |
+| 日志 | 🟡 中 | 两个服务同构 JSON、trace_id 跨服务贯通、一次请求一条汇总行；缺的是聚合（无 Loki/ELK） |
 | 链路追踪 | 🔴 无 | 完全没有 |
 | 容器编排 | 🟡 中 | 只有 Compose，无 K8s |
 | 发布交付 | 🔴 弱 | CI 完整，CD 为零 |
@@ -118,7 +118,7 @@ CLOSED ──窗口内失败达阈值──► OPEN ──等待 timeout──�
 
 - 滑动窗口计数（`RecordFailure` 里窗口过期则重置计数）
 - HALF_OPEN 只放行探测请求
-- 状态迁移打日志（`setState`）
+- 状态迁移独立打一行日志（`setState`）：翻开是 `Warn`、恢复是 `Info`。它不属于任何一条请求——熔断打开影响的是它之后的所有请求，埋进某一条请求的字段里就找不到了。请求侧另有 `cb` 字段（仅非 `closed` 时出现），用来分辨"这条 503 是熔断拒的还是重试耗光的"
 - 参数外部注入，不硬编码
 
 设计上的正确之处：**熔断逻辑封装在独立包，通过泛型函数 `withCircuitBreaker[T]` 包装 gRPC 调用**（`flight.go:59`），不侵入业务代码。有独立单元测试 `breaker_test.go`。
@@ -165,7 +165,7 @@ flight-service 是 gRPC，但把指标注册在 `http_*` 名下（`flight-servic
 
 ### D-4 基础设施指标 ✅
 
-postgres_exporter × 2 + redis_exporter，Grafana Infrastructure 看板覆盖 PG 连接数、commit/rollback 速率、缓冲命中率、Redis ops/内存/客户端数。
+postgres_exporter × 2 + redis_exporter，Grafana Infrastructure 看板覆盖 PG 连接数、commit/rollback 速率、缓冲命中率、Redis ops/内存/客户端数，以及应用侧缓存命中率与操作速率（`flight_cache_operations_total{cache,op,result}`）。
 
 **应用指标告诉你"坏了"，基础设施指标告诉你"为什么坏"。** 两者都要有。
 
@@ -273,16 +273,24 @@ CI 失败时上传容器日志、k6 摘要、`metrics-report.json` 作为 artifa
 
 ## H. 部分具备 / 薄弱
 
-### H-1 结构化日志 🟡 只有一半
+### H-1 结构化日志 🟡 缺的是聚合
 
-- ✅ booking-service 用 `slog` JSON handler（`cmd/main.go:29`），自定义请求日志中间件记录 method/path/status/latency_ms/request_id
-- ❌ flight-service 用标准库 `log`，输出非结构化文本（`[CACHE] HIT flight:xxx`、`[AUTH] OK /flight...`）
+两个服务都是 `slog` + JSON + `LOG_LEVEL`，输出可以用同一套解析规则处理（连 go-redis 的库内日志也经 `redis.SetLogger` 接进了 slog）。口径是**一次请求一条汇总行**：
 
-两种格式无法用同一套解析规则送进日志系统。
+- booking 侧由 echo 中间件打（`cmd/main.go` 的 `requestLogger`），flight 侧由 gRPC 拦截器打（`internal/logging/interceptor.go`，位于拦截器链最外层）
+- handler / service / 客户端层**不持有 logger**，字段挂进各自的 `internal/logctx` 字段袋，收尾时一并写出
+- 级别按 outcome 判：业务拒绝 `Info`、已自动处理的降级 `Warn`、5xx `Error`
+- 一次 `POST /bookings` 从 11 行降到 3 行；`LOG_LEVEL=warn` 时正常请求路径 0 行
 
-### H-2 请求 ID 🟡 只到边界
+规则见 [`CLAUDE.md`](../../CLAUDE.md) § 4，字段白名单见 [`conventions/engineering.md`](../conventions/engineering.md) § 5。
 
-booking-service 有 `middleware.RequestID()`，但这个 ID **没有通过 gRPC metadata 传给 flight-service**。跨服务的一次调用无法串联。
+**还缺**：日志聚合（无 Loki / ELK），现在只能 `docker compose logs` + `grep trace_id`。
+
+### H-2 请求 ID ✅ 已贯通
+
+`trace_id` 由 booking 侧的 `middleware.RequestID()` 生成（也接受调用方传入的 `X-Request-ID`），经 gRPC metadata `x-trace-id` 传给 flight-service；flight 收不到时自己生成一个当根。两侧汇总行用同一个值，一次跨服务调用能直接 join。
+
+**注意**：这是自建透传，不是 OpenTelemetry——没有 span、没有 trace 后端，只能把日志串起来，串不出耗时归因（那属于「链路追踪 🔴 无」那一行）。
 
 ### H-3 故障演示 🟡 是演示不是演练
 

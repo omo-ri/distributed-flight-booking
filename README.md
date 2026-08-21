@@ -251,10 +251,28 @@ Redis-кэш в flight-service: `flight:{id}` и `search:{origin}:{destination}:
 | `http_requests_total` | counter | service, endpoint, method, status |
 | `http_request_errors_total` | counter | service, endpoint, error_type |
 | `http_request_duration_seconds` | histogram | service, endpoint |
+| `flight_cache_operations_total` | counter | cache, op, result |
 
 Для HTTP в качестве метки endpoint используется шаблон маршрута (`/bookings/:id`), а не фактический URL — это ограничивает кардинальность; на стороне gRPC используется `info.FullMethod`.
 
 Prometheus опрашивает 6 таргетов с интервалом 5 с: оба сервиса, оба postgres_exporter, redis_exporter и самого себя.
+
+### Логи
+
+Оба сервиса пишут structured JSON через `slog`. **Одна строка на запрос**: её печатает middleware (HTTP) или перехватчик (gRPC), а слои handler / service / клиент логгера не имеют вообще — то, что стоит записать, они складывают в контекстный набор полей, и он попадает в ту же строку. Обе строки одного вызова связаны общим `trace_id`, который передаётся через gRPC-метаданные `x-trace-id`.
+
+Уровень определяется исходом, а не тем, «насколько страшно выглядит»: успех и **бизнес-отказ** (нет мест, не найдено) — `Info`; автоматически обработанная деградация (успех после ретрая, сбой записи в кэш) — `Warn`; 5xx и внутренние ошибки — `Error`.
+
+| `LOG_LEVEL` | Когда | Что остаётся в логах |
+|---|---|---|
+| `info` (по умолчанию) | обычная работа | по одной строке на запрос в каждом сервисе |
+| `warn` | нагрузочное тестирование | переходы circuit breaker, деградации, 5xx — путь запроса не пишется вообще |
+
+```bash
+LOG_LEVEL=warn docker compose up -d
+```
+
+Полные правила — в [`CLAUDE.md`](./CLAUDE.md) § 4, обоснование и список допустимых полей — в [`docs/conventions/engineering.md`](./docs/conventions/engineering.md) § 5.
 
 ### Дашборды Grafana
 
@@ -262,7 +280,7 @@ Prometheus опрашивает 6 таргетов с интервалом 5 с:
 
 **Services** — RPS по сервисам, перцентили задержки p50/p95/p99, доля ошибок, распределение по кодам ответа.
 
-**Infrastructure** — доступность экспортёров, активные соединения PostgreSQL по базам, скорость commit/rollback, попадание в буферный кэш, Redis ops/sec, память и подключённые клиенты.
+**Infrastructure** — доступность экспортёров, активные соединения PostgreSQL по базам, скорость commit/rollback, попадание в буферный кэш, Redis ops/sec, память и подключённые клиенты, а также попадание в кэш приложения (`flight_cache_operations_total`) — при `LOG_LEVEL=warn` это единственный способ узнать, держится ли пропускная способность на кэше.
 
 ### Алерты
 

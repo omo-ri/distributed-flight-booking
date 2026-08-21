@@ -49,9 +49,9 @@
 
 | ID | 任务 | 级别 | 状态 | 阻塞 / 影响 |
 |---|---|---|---|---|
-| [D-11](./D-11-structured-logging.md) | 日志不可用于排障 | 🟠 major | todo | 阻塞阶段 5 故障演练 |
 | [D-09](./D-09-prometheus-persistence.md) | 监控数据不持久 | 🟡 minor | todo | 跨天趋势、error budget 周期统计 |
 | [D-27](./D-27-histogram-buckets-mismatch.md) | 直方图桶与延迟量级不匹配 | 🟡 minor | todo | p95 不可信 → CI 门禁看不见性能退化 |
+| [D-29](./D-29-cache-error-masked-as-miss.md) | 缓存故障伪装成未命中 | 🟡 minor | todo | Redis 挂掉与缓存过期在看板上长得一样 |
 
 ### 阶段 2 · Kubernetes 迁移
 
@@ -90,6 +90,7 @@
 | ID | 任务 | 级别 | 完成于 |
 |---|---|---|---|
 | [D-17](./done/D-17-build-artifacts-in-git.md) | 构建产物被提交进 Git | 🔵 trivial | 文档重构（`docs/restructure`） |
+| [D-11](./done/D-11-structured-logging.md) | 日志不可用于排障 | 🟠 major | 日志口径重设计（`chore/loadtest-observability`，2026-08-21） |
 
 ## 阻塞关系
 
@@ -107,8 +108,8 @@ D-03 优雅停机 ─┐
                ├──► 阶段 2 Kubernetes 迁移
 D-05 健康检查 ─┘
 
-D-11 结构化日志 ──► 阶段 5 故障演练（没有能查的日志，演练出故障只能干瞪眼）
-D-11 结构化日志 ──► D-20 的完整修复（对外不回显错误详情，需要 request_id 能跨服务串起来）
+D-11 结构化日志 ✅ ──► 已解除对阶段 5 故障演练与 D-20 的阻塞
+                       （trace_id 已跨服务贯通，D-20 对外不回显错误详情时可以只回 trace_id）
 
 D-25 全链路超时 ──► D-21 HALF_OPEN 限流（探测请求不返回，熔断器会卡死在 HALF_OPEN）
 

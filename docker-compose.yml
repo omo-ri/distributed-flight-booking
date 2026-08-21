@@ -101,6 +101,8 @@ services:
     environment:
       GRPC_PORT: "50051"
       METRICS_PORT: "9091"
+      # 与 booking-service 同一个开关：LOG_LEVEL=warn docker compose up -d
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: flight-db
       DB_PORT: "5432"
       DB_USER: flight

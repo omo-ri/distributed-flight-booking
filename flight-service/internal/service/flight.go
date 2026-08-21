@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/cache"
+	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/logctx"
 	"github.com/omo-ri/distributed-flight-booking/flight-service/internal/repository"
 )
 
@@ -26,6 +27,11 @@ func NewFlightService(repo *repository.FlightRepo, c *cache.RedisCache) FlightSe
 
 func (s *flightService) SearchFlights(ctx context.Context, origin, destination, date string) ([]repository.FlightRow, error) {
 	// Cache read
+	if s.cache == nil {
+		// 没配 Redis 时整条路径绕过缓存。这也要挂进汇总行——否则「命中率为 0」
+		// 和「压根没查缓存」在日志里长得一样。
+		logctx.Add(ctx, logctx.KeyCache, logctx.CacheBypass)
+	}
 	if s.cache != nil {
 		if data, ok := s.cache.GetSearch(ctx, origin, destination, date); ok {
 			var rows []repository.FlightRow
@@ -53,6 +59,9 @@ func (s *flightService) SearchFlights(ctx context.Context, origin, destination, 
 
 func (s *flightService) GetFlight(ctx context.Context, id string) (repository.FlightRow, error) {
 	// Cache read
+	if s.cache == nil {
+		logctx.Add(ctx, logctx.KeyCache, logctx.CacheBypass)
+	}
 	if s.cache != nil {
 		if data, ok := s.cache.GetFlight(ctx, id); ok {
 			var row repository.FlightRow
@@ -113,7 +122,10 @@ func (s *flightService) invalidateFlightCache(ctx context.Context, flightID stri
 	// Fetch flight to get route info for search cache invalidation
 	flight, err := s.repo.GetFlightByID(ctx, flightID)
 	if err != nil {
-		log.Printf("[CACHE] cannot invalidate search cache: failed to get flight %s: %v", flightID, err)
+		// 失效不了搜索缓存意味着接下来几分钟的搜索结果会带旧的余座数——
+		// 异常但已自动处理（航班详情缓存已经删了），抬到 Warn。
+		logctx.Escalate(ctx, slog.LevelWarn)
+		logctx.Add(ctx, logctx.KeyDegraded, "search_cache_invalidate_failed")
 		return
 	}
 

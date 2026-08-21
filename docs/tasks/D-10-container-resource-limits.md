@@ -33,6 +33,6 @@ docker compose ps -q | xargs -I{} docker inspect {} \
   --format '{{.Name}} {{index .HostConfig.LogConfig.Config "max-size"}}'
 ```
 
-2026-08-21 实测 13/13 生效。这只是兜底，不是治法——治法是 `LOG_LEVEL`（[D-11](./D-11-structured-logging.md)）。
+2026-08-21 实测 13/13 生效。这只是兜底，不是治法——治法是 `LOG_LEVEL`（[D-11](./done/D-11-structured-logging.md)）。
 
 **剩下的**：`mem_limit` / `cpus` / `restart:` 仍是 0 处，要等 T-07 的容量基线才有定值依据。

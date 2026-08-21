@@ -267,9 +267,9 @@ curl -X POST http://localhost:8080/bookings/8e56216a-14b0-486e-8b9a-2a42099cb893
 
 这几条是实跑出来的行为，和直觉不一致，先知道能省很多调试时间：
 
-- **`?origin=&destination=LED` 返回 500 而不是 400**，响应体还会把下游 gRPC 错误原样透出。空串通过了生成代码的必填检查，到 flight-service 才被拒，而 booking-service 没把 `INVALID_ARGUMENT` 映射成 400 —— [D-18](./docs/tasks/D-18-invalid-argument-mapped-to-500.md)。
-- **请求体的必填字段没人校验。** 漏 `flight_id` 得到 `404 flight not found`（缺字段变成全零 UUID，拿去查航班当然查不到）；漏 `user_id` 更糟 —— **返回 201，订单挂在 `00000000-0000-0000-0000-000000000000` 名下**。只有 `seat_count` 有显式校验 —— [D-19](./docs/tasks/D-19-request-body-not-validated.md)。
-- **5xx 会把内部错误细节吐给你**，包括 SQLSTATE、列类型和长度上限（例如 `passenger_name` 超过 200 字符时）。调试时这很方便，但它不该出现在公开响应里 —— [D-20](./docs/tasks/D-20-internal-errors-leaked-to-clients.md)。顺带一提，这种 500 还会漏座位：座位已扣、订单没落库，见 [D-06](./docs/tasks/D-06-seat-inventory-leak.md)。
+- **`?origin=&destination=LED` 返回 500 而不是 400**，响应体还会把下游 gRPC 错误原样透出。空串通过了生成代码的必填检查，到 flight-service 才被拒，而 booking-service 没把 `INVALID_ARGUMENT` 映射成 400 —— [D-19](./docs/tasks/D-19-grpc-http-status-mapping.md)。
+- **请求体的必填字段没人校验。** 漏 `flight_id` 得到 `404 flight not found`（缺字段变成全零 UUID，拿去查航班当然查不到）；漏 `user_id` 更糟 —— **返回 201，订单挂在 `00000000-0000-0000-0000-000000000000` 名下**。只有 `seat_count` 有显式校验 —— [D-18](./docs/tasks/D-18-openapi-request-validation.md)。
+- **5xx 会把内部错误细节吐给你**，包括 SQLSTATE、列类型和长度上限（例如 `passenger_name` 超过 200 字符时）。调试时这很方便，但它不该出现在公开响应里 —— [D-20](./docs/tasks/D-20-internal-error-disclosure.md)。顺带一提，这种 500 还会漏座位：座位已扣、订单没落库，见 [D-06](./docs/tasks/D-06-seat-inventory-leak.md)。
 - **连查 5 个不存在的航班，之后连正常请求都返回 503。** 熔断器把 `NOT_FOUND`、`RESOURCE_EXHAUSTED` 这类业务错误也计进了失败统计，60 秒内攒够 5 次就打开，30 秒内拒绝所有请求 —— [D-01](./docs/tasks/D-01-circuit-breaker-error-classification.md)。
 
 完整的错误码映射（业务情况 → gRPC code → HTTP）和背后的取舍见 [`docs/architecture/contracts.md`](./docs/architecture/contracts.md)。
@@ -292,15 +292,21 @@ curl -X POST http://localhost:8080/bookings/8e56216a-14b0-486e-8b9a-2a42099cb893
 | `CB_ERROR_THRESHOLD` | `5` | 窗口内多少次失败后熔断 | booking |
 | `CB_TIMEOUT_SECONDS` | `30` | OPEN 持续多久后进 HALF_OPEN | booking |
 | `CB_WINDOW_SECONDS` | `60` | 失败统计窗口 | booking |
-| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`，拼错退回 `info` 并打一条 warn | booking |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`，拼错退回 `info` 并打一条 warn | 两个 |
 
-`LOG_LEVEL` **目前只对 booking 生效**：flight-service 还在用标准库 `log.Printf`，没有级别概念（[D-11](./docs/tasks/D-11-structured-logging.md)）。压测时设 `warn` 关掉正常请求路径的日志——booking 的 `requestLogger` 每个请求打一行，读路径一次跑几百万请求就是几个 G。
+两档实用值：**`info` 日常**（每个请求一条汇总行，两个服务各一条，靠 `trace_id` 串起来），**`warn` 压测与高负载**（正常请求路径一行不落盘，只剩熔断迁移、降级、5xx 这些需要人看的）。压测时这么起：
 
-来源：`booking-service/cmd/main.go:29-110`、`flight-service/cmd/main.go:30-91`。
+```bash
+LOG_LEVEL=warn docker compose up -d
+```
+
+日志的完整口径（一次请求一条汇总行、级别怎么判、汇总行带哪些字段）见 [`CLAUDE.md`](./CLAUDE.md) § 4 与 [`docs/conventions/engineering.md`](./docs/conventions/engineering.md) § 5。
+
+来源：`booking-service/cmd/main.go`、`flight-service/cmd/main.go` 的 `config loaded` 那条日志——起容器时它会把实际生效的配置全打出来。
 
 ## 6. 看监控
 
-- **Grafana** <http://localhost:3000> —— 两块看板随容器 provisioning 自动加载：Services（RPS、p50/p95/p99、错误率、状态码分布）和 Infrastructure（导出器存活、PG 连接数与提交回滚速率、Redis ops/内存）。
+- **Grafana** <http://localhost:3000> —— 两块看板随容器 provisioning 自动加载：Services（RPS、p50/p95/p99、错误率、状态码分布）和 Infrastructure（导出器存活、PG 连接数与提交回滚速率、Redis ops/内存、应用缓存命中率）。
 - **Prometheus** <http://localhost:9090> —— 6 个 target，5 秒抓一次。
 - **Alertmanager** <http://localhost:9093> —— 三条告警：`HighErrorRate`、`HighLatencyP95`、`ServiceDown`。
 

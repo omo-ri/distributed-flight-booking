@@ -50,7 +50,7 @@ JD 第 2 条明确提"扩缩容"。需要 HPA（基于 CPU 和自定义指标）
 
 ### G-04 日志体系 🔴
 
-JD 第 5 条明确点名 ELK/Loki。当前为零（[D-11](../tasks/D-11-structured-logging.md)）。
+JD 第 5 条明确点名 ELK/Loki。当前为零（[D-11](../tasks/done/D-11-structured-logging.md)）。
 
 需要覆盖：两服务统一结构化日志、trace_id 跨 gRPC 传播、Loki + Promtail/Alloy 采集、LogQL 查询、Grafana 里指标与日志联查（从异常曲线一键跳到对应时间窗的日志）。
 
@@ -120,4 +120,4 @@ JD 任职要求 3、4 和职责第 7 条。当前项目"用了"这些东西但�
 
 见 [roadmap.md](./roadmap.md)。
 
-一句话建议：**从阶段 1（可观测性补全）开始**。它同时修掉 [D-11](../tasks/D-11-structured-logging.md)、为 G-04 打底，并且是阶段 5 故障演练的前提 —— 没有能查的日志和链路，演练出故障你只能干瞪眼。
+一句话建议：**从阶段 1（可观测性补全）开始**。它同时修掉 [D-11](../tasks/done/D-11-structured-logging.md)、为 G-04 打底，并且是阶段 5 故障演练的前提 —— 没有能查的日志和链路，演练出故障你只能干瞪眼。

@@ -170,6 +170,48 @@
           "legendFormat": "clients"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Flight cache — Hit ratio by cache",
+      "description": "应用侧缓存命中率。压测时 LOG_LEVEL=warn 关掉汇总行，那时这条线是唯一能回答「这个吞吐是不是靠缓存撑的」的东西。",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 } },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "min"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (cache) (rate(flight_cache_operations_total{op=\"get\",result=\"hit\"}[5m])) / clamp_min(sum by (cache) (rate(flight_cache_operations_total{op=\"get\"}[5m])), 0.001)",
+          "legendFormat": "{{cache}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Flight cache — Operations/sec by op and result",
+      "description": "写失败（op=set, result=error）意味着缓存在静默降级：这次响应仍是对的，但下一次读必然 miss。",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0 } },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (cache, op, result) (rate(flight_cache_operations_total[5m]))",
+          "legendFormat": "{{cache}} {{op}} {{result}}"
+        }
+      ]
     }
   ]
 }

@@ -39,7 +39,7 @@ booking-service 是**唯一的公开入口**（见 `docs/design/system-design.md
 
 500 响应体的 `Message` 换成固定文案（`"internal error"`）加一个 `request_id`，真实错误只写进日志。
 
-**前置依赖**：`request_id` 要真的能查到东西。当前 `middleware.RequestID()` 只在 booking-service 的边界生成（`booking-service/cmd/main.go:91`），**没有透传到 gRPC metadata**，所以 flight-service 的日志里没有它——跨服务查不通。这一半属于 [D-11](./D-11-structured-logging.md)。
+**前置依赖**：`request_id` 要真的能查到东西。当前 `middleware.RequestID()` 只在 booking-service 的边界生成（`booking-service/cmd/main.go:91`），**没有透传到 gRPC metadata**，所以 flight-service 的日志里没有它——跨服务查不通。这一半属于 [D-11](./done/D-11-structured-logging.md)。
 
 所以拆成两步：
 
@@ -59,4 +59,4 @@ booking-service 是**唯一的公开入口**（见 `docs/design/system-design.md
 
 **信息泄漏很少来自一个显眼的漏洞，通常来自一个方便的默认写法。** `err.Error()` 是 Go 里最自然的一行代码，而它恰好把内部拓扑写进了公网响应。
 
-判据可以固定下来：任何要发到进程之外的字符串，都要问一次"接收方有资格看到这个吗"。同一个错误对内应该更详细、对外应该更简略，两者用 `request_id` 关联——这也是为什么 [D-11](./D-11-structured-logging.md) 不只是"日志好看一点"的问题：**没有可关联的日志，对外简化就等于把排障能力一起丢掉。**
+判据可以固定下来：任何要发到进程之外的字符串，都要问一次"接收方有资格看到这个吗"。同一个错误对内应该更详细、对外应该更简略，两者用 `request_id` 关联——这也是为什么 [D-11](./done/D-11-structured-logging.md) 不只是"日志好看一点"的问题：**没有可关联的日志，对外简化就等于把排障能力一起丢掉。**
