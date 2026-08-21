@@ -236,7 +236,9 @@ Prometheus 抓取配置、告警规则、Grafana 数据源、Grafana 看板 JSON
 
 ### F-6 阶梯曲线可读 ✅
 
-`k6/analyze_ladder.py` —— k6 收尾的 summary 只给全程一个 p95，那是拐点前后混在一起的数。这个脚本按阶梯档切开 CSV，打印每档的实际速率、p50/p95/p99、2xx/409/其他错误占比与状态码分布，并指出拐点落在哪一档。阶梯定义由 `k6/script.js` 的 `handleSummary` 写进 `k6/out/<run>.stages.json`，不在两处重复。
+`k6/script.js:333` 的 `handleSummary` —— k6 收尾的 summary 只给全程一个 p95，那是拐点前后混在一起的数。分档由每个请求带的 `step` 标签完成，收尾时直接从 `http_req_duration{step:N}` 等子指标读出每档的实际速率、p50/p95/p99 与 2xx/409/err 占比，`renderLadder`（`k6/script.js:386`）打成表并判出拐点落在哪一档（判据在 `:403-404`）。同一份数据存进 `k6/out/<run>.report.json`（`:379`），几 KB。
+
+**聚合在 k6 进程内完成，不落 CSV。** csv 输出按「指标采样」写行而不是按请求写行，实测一个请求 15 行约 1.76 KB，读路径一次 4 分钟的跑就是 8.4 GB，其中被用到的不到 2%。
 
 ---
 

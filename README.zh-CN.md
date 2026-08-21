@@ -341,11 +341,7 @@ make loadtest-write-recon                 # 闭环加 VU，读出吞吐平台 X_
 make loadtest-write-ladder RATE_MAX=654   # 开环按 X_max 铺阶梯，0.5×–1.5×
 ```
 
-`read` 场景同理（`loadtest-read-recon` / `loadtest-read-ladder`）。每次跑完自动打印分档曲线，也可以单独看：
-
-```bash
-python3 k6/analyze_ladder.py write-ladder
-```
+`read` 场景同理（`loadtest-read-recon` / `loadtest-read-ladder`）。每次跑完直接在终端打印分档曲线并指出拐点，同一份数据存进 `k6/out/<run>.report.json`（几 KB）。**不产 CSV**——按指标采样写行的话，读路径一次跑就是 8.4 GB。
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|

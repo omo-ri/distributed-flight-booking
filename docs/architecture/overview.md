@@ -220,7 +220,7 @@ flight-service 是 gRPC，但**刻意复用 `http_*` 指标名**（`flight-servi
 | `read` | 打散到 50 个航班，只压 `GET /flights/{id}` | `MODE=recon` 闭环 / `MODE=ladder` 开环阶梯 | 读路径吞吐上限与拐点 |
 | `write` | 锁定 1 个航班，只压 `POST /bookings` | 同上 | 单航班行锁上限与过载后的表现 |
 
-两个阶梯场景须先 `recon` 后 `ladder`：`recon` 用 `ramping-vus` 测出吞吐平台 `X_max`，`ladder` 再用 `ramping-arrival-rate` 自 `0.5×` 铺到 `1.5×X_max`。入口是 `Makefile` 的 `loadtest-*` 目标，曲线由 `k6/analyze_ladder.py` 按档打印。
+两个阶梯场景须先 `recon` 后 `ladder`：`recon` 用 `ramping-vus` 测出吞吐平台 `X_max`，`ladder` 再用 `ramping-arrival-rate` 自 `0.5×` 铺到 `1.5×X_max`。入口是 `Makefile` 的 `loadtest-*` 目标，分档曲线由 `k6/script.js:386` 的 `renderLadder` 在跑完时直接打印，并存一份 `k6/out/<run>.report.json`。
 
 409 被 `setResponseCallback` 排除出 `http_req_failed`（`k6/script.js:53`）—— 座位不足是正常业务拒绝，不是故障。
 

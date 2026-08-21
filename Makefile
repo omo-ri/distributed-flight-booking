@@ -65,7 +65,7 @@ K6_EXTRA    ?=
 # 不落 CSV：k6 的 csv 输出按「指标采样」写行而不是按请求写行，实测一个请求 15 行、
 # 约 1.76 KB，读路径一次 4 分钟的跑就是 8.4 GB，而其中被用到的不到 2%。
 # 现在按档聚合在 k6 内部完成，收尾直接打表并存一份几 KB 的 out/<run>.report.json。
-# 需要逐请求的原始数据时再手动加 --out csv=out/x.csv.gz，并用 analyze_ladder.py 看。
+# 需要逐请求的原始数据时再手动加 K6_EXTRA="--out csv=out/x.csv.gz"，自己拿工具看。
 
 # 压测航班不进迁移——它是测试装置，不是系统的一部分。见 k6/loadtest-seed.sql。
 loadtest-seed:

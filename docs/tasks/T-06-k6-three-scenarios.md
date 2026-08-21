@@ -8,7 +8,6 @@ blocks: [T-07]
 refs:
   - k6/script.js
   - k6/loadtest-seed.sql
-  - k6/analyze_ladder.py
   - flight-service/migrations
 ---
 
