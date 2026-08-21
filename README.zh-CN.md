@@ -267,9 +267,9 @@ curl -X POST http://localhost:8080/bookings/8e56216a-14b0-486e-8b9a-2a42099cb893
 
 这几条是实跑出来的行为，和直觉不一致，先知道能省很多调试时间：
 
-- **`?origin=&destination=LED` 返回 500 而不是 400**，响应体还会把下游 gRPC 错误原样透出。空串通过了生成代码的必填检查，到 flight-service 才被拒，而 booking-service 没把 `INVALID_ARGUMENT` 映射成 400 —— [D-18](./docs/tasks/D-18-invalid-argument-mapped-to-500.md)。
-- **请求体的必填字段没人校验。** 漏 `flight_id` 得到 `404 flight not found`（缺字段变成全零 UUID，拿去查航班当然查不到）；漏 `user_id` 更糟 —— **返回 201，订单挂在 `00000000-0000-0000-0000-000000000000` 名下**。只有 `seat_count` 有显式校验 —— [D-19](./docs/tasks/D-19-request-body-not-validated.md)。
-- **5xx 会把内部错误细节吐给你**，包括 SQLSTATE、列类型和长度上限（例如 `passenger_name` 超过 200 字符时）。调试时这很方便，但它不该出现在公开响应里 —— [D-20](./docs/tasks/D-20-internal-errors-leaked-to-clients.md)。顺带一提，这种 500 还会漏座位：座位已扣、订单没落库，见 [D-06](./docs/tasks/D-06-seat-inventory-leak.md)。
+- **`?origin=&destination=LED` 返回 500 而不是 400**，响应体还会把下游 gRPC 错误原样透出。空串通过了生成代码的必填检查，到 flight-service 才被拒，而 booking-service 没把 `INVALID_ARGUMENT` 映射成 400 —— [D-19](./docs/tasks/D-19-grpc-http-status-mapping.md)。
+- **请求体的必填字段没人校验。** 漏 `flight_id` 得到 `404 flight not found`（缺字段变成全零 UUID，拿去查航班当然查不到）；漏 `user_id` 更糟 —— **返回 201，订单挂在 `00000000-0000-0000-0000-000000000000` 名下**。只有 `seat_count` 有显式校验 —— [D-18](./docs/tasks/D-18-openapi-request-validation.md)。
+- **5xx 会把内部错误细节吐给你**，包括 SQLSTATE、列类型和长度上限（例如 `passenger_name` 超过 200 字符时）。调试时这很方便，但它不该出现在公开响应里 —— [D-20](./docs/tasks/D-20-internal-error-disclosure.md)。顺带一提，这种 500 还会漏座位：座位已扣、订单没落库，见 [D-06](./docs/tasks/D-06-seat-inventory-leak.md)。
 - **连查 5 个不存在的航班，之后连正常请求都返回 503。** 熔断器把 `NOT_FOUND`、`RESOURCE_EXHAUSTED` 这类业务错误也计进了失败统计，60 秒内攒够 5 次就打开，30 秒内拒绝所有请求 —— [D-01](./docs/tasks/D-01-circuit-breaker-error-classification.md)。
 
 完整的错误码映射（业务情况 → gRPC code → HTTP）和背后的取舍见 [`docs/architecture/contracts.md`](./docs/architecture/contracts.md)。
@@ -292,12 +292,21 @@ curl -X POST http://localhost:8080/bookings/8e56216a-14b0-486e-8b9a-2a42099cb893
 | `CB_ERROR_THRESHOLD` | `5` | 窗口内多少次失败后熔断 | booking |
 | `CB_TIMEOUT_SECONDS` | `30` | OPEN 持续多久后进 HALF_OPEN | booking |
 | `CB_WINDOW_SECONDS` | `60` | 失败统计窗口 | booking |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error`，拼错退回 `info` 并打一条 warn | 两个 |
 
-来源：`booking-service/cmd/main.go:35-106`、`flight-service/cmd/main.go:30-91`。
+两档实用值：**`info` 日常**（每个请求一条汇总行，两个服务各一条，靠 `trace_id` 串起来），**`warn` 压测与高负载**（正常请求路径一行不落盘，只剩熔断迁移、降级、5xx 这些需要人看的）。压测时这么起：
+
+```bash
+LOG_LEVEL=warn docker compose up -d
+```
+
+日志的完整口径（一次请求一条汇总行、级别怎么判、汇总行带哪些字段）见 [`CLAUDE.md`](./CLAUDE.md) § 4 与 [`docs/conventions/engineering.md`](./docs/conventions/engineering.md) § 5。
+
+来源：`booking-service/cmd/main.go`、`flight-service/cmd/main.go` 的 `config loaded` 那条日志——起容器时它会把实际生效的配置全打出来。
 
 ## 6. 看监控
 
-- **Grafana** <http://localhost:3000> —— 两块看板随容器 provisioning 自动加载：Services（RPS、p50/p95/p99、错误率、状态码分布）和 Infrastructure（导出器存活、PG 连接数与提交回滚速率、Redis ops/内存）。
+- **Grafana** <http://localhost:3000> —— 两块看板随容器 provisioning 自动加载：Services（RPS、p50/p95/p99、错误率、状态码分布）和 Infrastructure（导出器存活、PG 连接数与提交回滚速率、Redis ops/内存、应用缓存命中率）。
 - **Prometheus** <http://localhost:9090> —— 6 个 target，5 秒抓一次。
 - **Alertmanager** <http://localhost:9093> —— 三条告警：`HighErrorRate`、`HighLatencyP95`、`ServiceDown`。
 
@@ -324,12 +333,37 @@ make test                              # pytest：16 个集成 + E2E 测试
 go test -race -count=1 ./...           # Go 单元测试（在各服务目录下跑）
 ```
 
-压测（k6，10 VU / 30 秒，阈值 p95 < 500ms、错误率 < 1%）：
+压测（k6，三个场景）：
 
 ```bash
-docker run --rm --network host -v "$PWD/k6:/scripts" -w /scripts \
-  -e BASE_URL=http://localhost:8080 grafana/k6:0.55.0 run script.js
+make loadtest-seed          # 灌压测专用航班（不在迁移里，是测试装置）
+make loadtest-steady        # 平峰：恒定 500 QPS 混合，阈值 p95<50ms、错误率<1%
 ```
+
+找容量拐点要跑两遍，**先闭环摸底再开环突破**：
+
+```bash
+make loadtest-write-recon                 # 闭环加 VU，读出吞吐平台 X_max
+make loadtest-write-ladder RATE_MAX=654   # 开环按 X_max 铺阶梯，0.5×–1.5×
+```
+
+`read` 场景同理（`loadtest-read-recon` / `loadtest-read-ladder`）。每次跑完直接在终端打印分档曲线并指出拐点，同一份数据存进 `k6/out/<run>.report.json`（几 KB）。**不产 CSV**——按指标采样写行的话，读路径一次跑就是 8.4 GB。
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `BASE_URL` | `http://localhost:8080` | 被测入口 |
+| `SCENARIO` | `steady` | `steady` / `read` / `write` |
+| `MODE` | `ladder` | `recon` 闭环摸底 / `ladder` 开环阶梯 |
+| `RATE` | `500` | `steady` 的恒定速率 |
+| `P95_MS` | `50` | `steady` 的 p95 阈值（ms） |
+| `RATE_MAX` | 推算兜底 | `ladder` 的阶梯中心，**应填 recon 实测的 `X_max`** |
+| `VU_MAX` | 读 400 / 写 200 | `recon` 的 VU 上限 |
+| `STEPS` / `STEP_DURATION` / `RAMP_DURATION` | 6 / 45s / 10s | 阶梯形状 |
+| `MAX_VUS` | 1000 | 开环的 VU 池上限；不够大就会变成新天花板 |
+
+调阶梯形状用 `K6_EXTRA`：`make loadtest-read-recon K6_EXTRA="-e STEPS=4 -e STEP_DURATION=30s"`
+
+**CI 里的 k6 不是容量门禁**：runner 规格与开发机差一个数量级，判不了容量，只跑 `steady` 烟雾档。容量结论只能来自本机，写进 `docs/reports/load/` 并记录机器配置。
 
 ## 8. 出问题时
 

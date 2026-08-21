@@ -169,30 +169,48 @@ jobs:
             sleep 2
           done
 
-      - name: Run k6
+      # 压测航班不在迁移里（它是测试装置，不是系统的一部分）——见 k6/loadtest-seed.sql。
+      - name: Seed load-test flights
+        run: make loadtest-seed
+
+      # CI 上只跑 steady 场景，且刻意降速降标准。
+      #
+      # 这不是门禁：runner 是 2–4 核、要同时跑 13 个容器，与开发机差一个数量级，
+      # 它判不了容量（docs/conventions/testing.md § 6）。这一步只回答
+      # 「跑得起来、没崩、没有数量级退化」。
+      #
+      # RATE=50 / P95_MS=500 与改造前的口径**完全一致**（改造前是 10 VU +
+      # sleep(0.1) ≈ 90 req/s、p95<500），没有放宽任何既有阈值。
+      # 本机跑 steady 用脚本默认值：500 QPS、p95<50ms，那才是 R2 的真实要求。
+      #
+      # read / write 两个阶梯场景**不在 CI 里跑** —— 开环阶梯会把 runner 打死，
+      # 而且结论无效。它们只在开发机跑，产出进 docs/reports/load/（T-07）。
+      - name: Run k6 (smoke, steady scenario)
         run: |
           mkdir -p k6/out
           docker run --rm --network host \
+            --user "$(id -u):$(id -g)" \
             -v "$PWD/k6:/scripts" \
             -w /scripts \
             -e BASE_URL=http://localhost:8080 \
-            grafana/k6:0.55.0 run \
-              --summary-export=out/summary.json \
-              script.js
+            -e RUN_NAME=ci-smoke \
+            -e SCENARIO=steady \
+            -e RATE=50 \
+            -e P95_MS=500 \
+            grafana/k6:0.55.0 run script.js
 
       - name: Show k6 summary
         if: always()
         run: |
-          if [ -f k6/out/summary.json ]; then
+          if [ -f k6/out/ci-smoke.summary.json ]; then
             python3 -c "
           import json
-          s = json.load(open('k6/out/summary.json'))
-          m = s['metrics']
-          print('p95 duration_ms:', round(m['http_req_duration']['p(95)'], 1))
-          print('p99 duration_ms:', round(m['http_req_duration']['p(99)'], 1))
-          print('error rate:',      round(m['http_req_failed']['value'] * 100, 3), '%')
-          print('checks rate:',     round(m['checks']['value'] * 100, 3), '%')
-          print('requests total:',  int(m['http_reqs']['count']))
+          m = json.load(open('k6/out/ci-smoke.summary.json'))['metrics']
+          print('p95 duration_ms:', round(m['http_req_duration']['values']['p(95)'], 1))
+          print('p99 duration_ms:', round(m['http_req_duration']['values']['p(99)'], 1))
+          print('error rate (409 排除):', round(m['http_req_failed']['values']['rate'] * 100, 3), '%')
+          print('checks rate:',     round(m['checks']['values']['rate'] * 100, 3), '%')
+          print('requests total:',  int(m['http_reqs']['values']['count']))
           "
           fi
 
@@ -220,7 +238,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: k6-summary
-          path: k6/out/summary.json
+          path: k6/out/ci-smoke.summary.json
           if-no-files-found: ignore
 
       - name: Upload load-test logs

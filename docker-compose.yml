@@ -1,7 +1,19 @@
+# 日志盘上限（D-10）。默认的 json-file driver 不轮转，一次读路径压测
+# （百万级请求）能把宿主机磁盘写满。50m × 3 = 单容器最多 150 MB。
+# 这只是兜底。请求路径日志本身是允许的（CLAUDE.md § 4），治法是 LOG_LEVEL——
+# 压测切 warn 就不落盘。两者缺一不可：只加上限，压测时日志有界但仍然是噪音；
+# 只加开关，忘了切的那次磁盘照样满。
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   # ---- Databases ----
   flight-db:
     image: postgres:16-alpine
+    logging: *default-logging
     environment:
       POSTGRES_DB: flight_db
       POSTGRES_USER: flight
@@ -18,6 +30,7 @@ services:
 
   booking-db:
     image: postgres:16-alpine
+    logging: *default-logging
     environment:
       POSTGRES_DB: booking_db
       POSTGRES_USER: booking
@@ -35,6 +48,7 @@ services:
   # ---- Redis Sentinel (题9) ----
   redis-master:
     image: redis:7-alpine
+    logging: *default-logging
     ports:
       - "6379:6379"
     healthcheck:
@@ -45,6 +59,7 @@ services:
 
   redis-slave:
     image: redis:7-alpine
+    logging: *default-logging
     command: redis-server --replicaof redis-master 6379
     depends_on:
       redis-master:
@@ -57,6 +72,7 @@ services:
 
   redis-sentinel:
     image: redis:7-alpine
+    logging: *default-logging
     command: >
       sh -c '
       echo "sentinel resolve-hostnames yes" > /tmp/sentinel.conf &&
@@ -81,9 +97,12 @@ services:
   # ---- Flight Service ----
   flight-service:
     build: ./flight-service
+    logging: *default-logging
     environment:
       GRPC_PORT: "50051"
       METRICS_PORT: "9091"
+      # 与 booking-service 同一个开关：LOG_LEVEL=warn docker compose up -d
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: flight-db
       DB_PORT: "5432"
       DB_USER: flight
@@ -106,8 +125,11 @@ services:
     build:
       context: .
       dockerfile: booking-service/Dockerfile
+    logging: *default-logging
     environment:
       HTTP_PORT: "8080"
+      # 压测时切成 warn 关掉请求日志：LOG_LEVEL=warn docker compose up -d booking-service
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_HOST: booking-db
       DB_PORT: "5432"
       DB_USER: booking
@@ -130,6 +152,7 @@ services:
   # ---- Infrastructure exporters (题6) ----
   postgres-exporter-booking:
     image: prometheuscommunity/postgres-exporter:v0.16.0
+    logging: *default-logging
     environment:
       DATA_SOURCE_NAME: "postgresql://booking:booking_pass@booking-db:5432/booking_db?sslmode=disable"
     depends_on:
@@ -138,6 +161,7 @@ services:
 
   postgres-exporter-flight:
     image: prometheuscommunity/postgres-exporter:v0.16.0
+    logging: *default-logging
     environment:
       DATA_SOURCE_NAME: "postgresql://flight:flight_pass@flight-db:5432/flight_db?sslmode=disable"
     depends_on:
@@ -146,6 +170,7 @@ services:
 
   redis-exporter:
     image: oliver006/redis_exporter:v1.66.0
+    logging: *default-logging
     environment:
       REDIS_ADDR: redis://redis-master:6379
     depends_on:
@@ -155,6 +180,7 @@ services:
   # ---- Prometheus (题4) ----
   prometheus:
     image: prom/prometheus:v2.55.0
+    logging: *default-logging
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -170,6 +196,7 @@ services:
   # ---- Alertmanager (题9) ----
   alertmanager:
     image: prom/alertmanager:v0.27.0
+    logging: *default-logging
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
@@ -180,6 +207,7 @@ services:
   # ---- Grafana (题5, 题6) ----
   grafana:
     image: grafana/grafana:11.3.0
+    logging: *default-logging
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin

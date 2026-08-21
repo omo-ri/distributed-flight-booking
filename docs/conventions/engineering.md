@@ -81,7 +81,59 @@ distributed-flight-booking/
 
 **日志级别按"谁需要看"划分**，而不是按"这事有多严重"。这个判据能直接回答最常见的争论 —— 重试成功了该打 Error 还是 Info？答案是 Warn：异常但已自动处理，没人需要半夜起来看，但趋势变化值得关注。
 
-**不在正常请求路径上打日志。** 高频路径的日志成本是真实的（磁盘、采集带宽、Loki 索引），而且会淹没有用的信息。当前 `[AUTH] OK` 和 cache HIT/MISS 就是反例 —— 见 [D-11](../tasks/D-11-structured-logging.md)。请求级信息用指标表达，只在异常时打日志。
+**请求路径日志打在 `Info`，靠 `LOG_LEVEL` 关，而不是靠不写。** 高频路径的日志成本是真实的（磁盘、采集带宽、Loki 索引），但这个成本只在高负载时才是问题，而高负载时你恰恰知道自己在做什么——切 `warn` 就行。为了省这个成本而在平时丢掉"这一条请求具体发生了什么"，代价更大：出事时没有可查的东西，指标只能告诉你"错误率涨了"，告诉不了你哪一条、为什么。
+
+所以判据不是"打不打"，而是"**关得掉吗**"。没有 `LOG_LEVEL` 的请求路径日志才是缺陷——本仓库为此付过一次学费：一次读路径压测 385 万请求 × 每请求至少 2 行 = 770 万行、几个 G，因为当时两个服务都没有级别开关（见 [D-11](../tasks/done/D-11-structured-logging.md)）。
+
+### 为什么是"一次请求一条汇总行"
+
+改造前一次 `POST /bookings` 产出 **11 行**：handler 2 行 + service 6 行 + 中间件 1 行，flight 侧 `[AUTH] OK` 与 cache HIT 各 1 行。这 11 行描述的是同一件事，而其中"多快、多少、成功率"三类问题指标已经答过了。改造后是 **3 行**（booking 1 + flight 2，因为一次下单是两次 RPC）。
+
+被否掉的两个替代方案：
+
+- **分层日志降到 `Debug`**：看着安全，实际是把"该不该打"的判断推给运行时开关。debug 在生产和压测都不会开，等于那些代码永远不执行，却仍要随业务改动一起维护；真出故障时你要的是"这一条请求发生了什么"，一条带全字段的汇总行比 8 行流水更快读懂。
+- **汇总行保持精简、细节全靠指标**：那会让汇总行退化成一条 HTTP access log——能告诉你哪条慢，一条也答不出为什么慢。指标答"这一档命中率 87%"，答不了"刚才这条 p99=800ms 的请求是不是 miss 了"。
+
+所以下层不打行，但可以往 `logctx` 字段袋里挂字段，由入口中间件/拦截器收尾时一并写出。**日志字段不是指标标签，没有基数上界的约束**——`booking_id` 这类 UUID 放日志完全合规（禁的是拿它当指标标签）。
+
+### 汇总行字段白名单
+
+白名单在代码里的落点是两个服务各自的 `internal/logctx` 常量。**新增字段先改这张表再加常量**，否则它会退化成什么都往里塞的另一种噪音。
+
+**固有字段**（入口无条件写）：
+
+| 字段 | booking（HTTP） | flight（gRPC） |
+|---|---|---|
+| `msg` | `request` | `rpc` |
+| `trace_id` | ✔ | ✔ |
+| `route` | 路由模板 `/bookings/:id` | gRPC 全方法名 |
+| `method` / `path` | ✔ | —（gRPC 无对应物） |
+| `status` / `code` | HTTP 状态码 | gRPC 码名 |
+| `latency_ms` | ✔ | ✔ |
+
+**上浮白名单**（下层按需挂）：
+
+| 服务 | 字段 | 谁挂 |
+|---|---|---|
+| booking | `booking_id`、`flight_id`、`user_id`、`seat_count`、`origin`/`destination`/`date` | handler / service |
+| booking | `downstream_code`、`retries`、`cb` | `grpcclient` |
+| flight | `cache`（`hit`/`miss`/`bypass`）、`rows` | `cache` / `service` |
+| 两侧通用 | `outcome`、`reason`、`error`、`degraded` | 发生的那一层 |
+
+`cb` 与 `retries` **只在非常态时出现**：熔断闭合是常态，每条都打 `cb=closed` 是纯噪音；反过来字段一出现就意味着这条请求走了非常态分支，grep 一下就是全部受影响请求。实测效果——同样是失败，两种原因在同一张表里一眼可分：
+
+```
+"status":500,"retries":3,"downstream_code":"Unavailable","error":"search flights: ... all 3 retries exhausted: ..."
+"status":503,"cb":"open","reason":"circuit_open"
+```
+
+### 为什么不采样、不上 OpenTelemetry
+
+**不采样**：采样是第三个观测面，既不是完整日志也不是指标。采出来的 1% 回答不了"这一条具体发生了什么"（你要查的那条大概率没被采中），也回答不了"多少"（指标已经全量）。高负载时切 `LOG_LEVEL=warn` 就够——那时剩下的恰好是压测中你真正想看的东西。
+
+**trace_id 自建透传而不是上 otel**：otel 的价值在接上 trace 后端之后（火焰图、span 树、跨服务耗时归因），而这套东西一个都没有。只为了"让两行日志能 join"引入 SDK + 两个 instrumentation 包，是拿大依赖换二十行代码能做到的事，之后 span 生命周期、采样率、exporter 配置全变成要维护的新面。代价是将来真上 otel 要换字段来源，但字段名叫 `trace_id`、值是不透明字符串，这个替换是局部的。
+
+透传链路：echo 的 `RequestID` 中间件生成（或采用调用方传入的 `X-Request-ID`）→ `logctx` → `grpcclient` 挂进 outgoing metadata `x-trace-id` → flight 的 logging 拦截器读出，读不到就自己生成一个当根。**键名两边各写一份**（独立 module，除 `pb` 外不共享代码），改一边必须改另一边。
 
 **标签基数无上界会打爆 Prometheus 内存**，这是监控系统最常见的事故原因之一。每个 UUID 变成一个新时间序列，一个 URL 参数就能让内存翻十倍。本仓库的做法见 [architecture/overview.md § 8](../architecture/overview.md)：HTTP 侧用路由模板 `/bookings/:id` 而非实际 URL。
 

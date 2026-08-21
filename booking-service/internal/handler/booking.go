@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/omo-ri/distributed-flight-booking/booking-service/api"
 	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/circuitbreaker"
+	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/logctx"
 	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/repository"
 	"github.com/omo-ri/distributed-flight-booking/booking-service/internal/service"
 )
@@ -19,42 +19,55 @@ import (
 // isCircuitOpen checks if the error is a circuit breaker open error and returns 503 if so.
 func isCircuitOpen(c echo.Context, err error) bool {
 	if errors.Is(err, circuitbreaker.ErrCircuitOpen) {
+		logctx.Add(c.Request().Context(), logctx.KeyReason, "circuit_open")
 		_ = c.JSON(http.StatusServiceUnavailable, api.Error{Message: "service temporarily unavailable"})
 		return true
 	}
 	return false
 }
 
-type BookingHandler struct {
-	svc service.BookingService
-	log *slog.Logger
+// reject 记录一次业务拒绝。它是 Info 不是 Warn——座位不足、订单不存在都是
+// 正常业务结果，没人需要为它做什么（CLAUDE.md § 4 的级别判据）。
+func reject(c echo.Context, reason string) {
+	logctx.Add(c.Request().Context(), logctx.KeyOutcome, logctx.OutcomeRejected, logctx.KeyReason, reason)
 }
 
-func NewBookingHandler(svc service.BookingService, log *slog.Logger) *BookingHandler {
-	return &BookingHandler{svc: svc, log: log.With("layer", "handler")}
+// fail 记录一次内部错误。级别不用在这里定：中间件按响应状态码判 Error。
+func fail(c echo.Context, err error) {
+	logctx.Add(c.Request().Context(), logctx.KeyError, err.Error())
+}
+
+// BookingHandler 不持有 logger——正常路径上它一行日志都不打，
+// 值得记的字段挂进 logctx，由 requestLogger 写进那一条汇总行。
+type BookingHandler struct {
+	svc service.BookingService
+}
+
+func NewBookingHandler(svc service.BookingService) *BookingHandler {
+	return &BookingHandler{svc: svc}
 }
 
 // Ensure BookingHandler implements api.ServerInterface.
 var _ api.ServerInterface = (*BookingHandler)(nil)
 
 func (h *BookingHandler) SearchFlights(c echo.Context, params api.SearchFlightsParams) error {
+	ctx := c.Request().Context()
 	var date string
 	if params.Date != nil {
 		date = params.Date.Time.Format("2006-01-02")
 	}
-
-	h.log.Info("searching flights",
-		"origin", params.Origin,
-		"destination", params.Destination,
-		"date", date,
+	logctx.Add(ctx,
+		logctx.KeyOrigin, params.Origin,
+		logctx.KeyDestination, params.Destination,
+		logctx.KeyDate, date,
 	)
 
-	flights, err := h.svc.SearchFlights(c.Request().Context(), params.Origin, params.Destination, date)
+	flights, err := h.svc.SearchFlights(ctx, params.Origin, params.Destination, date)
 	if err != nil {
 		if isCircuitOpen(c, err) {
 			return nil
 		}
-		h.log.Error("search flights failed", "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
@@ -63,23 +76,23 @@ func (h *BookingHandler) SearchFlights(c echo.Context, params api.SearchFlightsP
 		result = append(result, flightInfoToAPI(f))
 	}
 
-	h.log.Info("search flights completed", "count", len(result))
 	return c.JSON(http.StatusOK, result)
 }
 
 func (h *BookingHandler) GetFlight(c echo.Context, id openapi_types.UUID) error {
-	h.log.Info("getting flight", "flight_id", id)
+	ctx := c.Request().Context()
+	logctx.Add(ctx, logctx.KeyFlightID, id.String())
 
-	flight, err := h.svc.GetFlight(c.Request().Context(), id.String())
+	flight, err := h.svc.GetFlight(ctx, id.String())
 	if errors.Is(err, service.ErrFlightNotFound) {
-		h.log.Warn("flight not found", "flight_id", id)
+		reject(c, "flight_not_found")
 		return c.JSON(http.StatusNotFound, api.Error{Message: "flight not found"})
 	}
 	if err != nil {
 		if isCircuitOpen(c, err) {
 			return nil
 		}
-		h.log.Error("get flight failed", "flight_id", id, "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
@@ -87,24 +100,24 @@ func (h *BookingHandler) GetFlight(c echo.Context, id openapi_types.UUID) error 
 }
 
 func (h *BookingHandler) CreateBooking(c echo.Context) error {
+	ctx := c.Request().Context()
 	var req api.CreateBookingJSONRequestBody
 	if err := c.Bind(&req); err != nil {
-		h.log.Warn("invalid request body", "error", err)
+		reject(c, "invalid_body")
 		return c.JSON(http.StatusBadRequest, api.Error{Message: "invalid request body"})
 	}
 	if req.SeatCount < 1 {
-		h.log.Warn("invalid seat_count", "seat_count", req.SeatCount)
+		reject(c, "invalid_seat_count")
 		return c.JSON(http.StatusBadRequest, api.Error{Message: "seat_count must be at least 1"})
 	}
 
-	h.log.Info("creating booking",
-		"user_id", req.UserId,
-		"flight_id", req.FlightId,
-		"passenger", req.PassengerName,
-		"seats", req.SeatCount,
+	logctx.Add(ctx,
+		logctx.KeyUserID, req.UserId.String(),
+		logctx.KeyFlightID, req.FlightId.String(),
+		logctx.KeySeatCount, req.SeatCount,
 	)
 
-	booking, err := h.svc.CreateBooking(c.Request().Context(), service.CreateBookingInput{
+	booking, err := h.svc.CreateBooking(ctx, service.CreateBookingInput{
 		UserID:         req.UserId.String(),
 		FlightID:       req.FlightId.String(),
 		PassengerName:  req.PassengerName,
@@ -112,39 +125,35 @@ func (h *BookingHandler) CreateBooking(c echo.Context) error {
 		SeatCount:      int32(req.SeatCount),
 	})
 	if errors.Is(err, service.ErrFlightNotFound) {
-		h.log.Warn("booking failed: flight not found", "flight_id", req.FlightId)
+		reject(c, "flight_not_found")
 		return c.JSON(http.StatusNotFound, api.Error{Message: "flight not found"})
 	}
 	if errors.Is(err, service.ErrInsufficientSeats) {
-		h.log.Warn("booking failed: insufficient seats", "flight_id", req.FlightId, "seats", req.SeatCount)
+		reject(c, "insufficient_seats")
 		return c.JSON(http.StatusConflict, api.Error{Message: "insufficient seats"})
 	}
 	if err != nil {
 		if isCircuitOpen(c, err) {
 			return nil
 		}
-		h.log.Error("create booking failed", "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
-	h.log.Info("booking created",
-		"booking_id", booking.ID,
-		"total_price", booking.TotalPrice,
-		"status", booking.Status,
-	)
 	return c.JSON(http.StatusCreated, bookingRowToAPI(booking))
 }
 
 func (h *BookingHandler) GetBooking(c echo.Context, id openapi_types.UUID) error {
-	h.log.Info("getting booking", "booking_id", id)
+	ctx := c.Request().Context()
+	logctx.Add(ctx, logctx.KeyBookingID, id.String())
 
-	booking, err := h.svc.GetBooking(c.Request().Context(), id.String())
+	booking, err := h.svc.GetBooking(ctx, id.String())
 	if errors.Is(err, service.ErrNotFound) {
-		h.log.Warn("booking not found", "booking_id", id)
+		reject(c, "booking_not_found")
 		return c.JSON(http.StatusNotFound, api.Error{Message: "booking not found"})
 	}
 	if err != nil {
-		h.log.Error("get booking failed", "booking_id", id, "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
@@ -152,11 +161,12 @@ func (h *BookingHandler) GetBooking(c echo.Context, id openapi_types.UUID) error
 }
 
 func (h *BookingHandler) ListBookings(c echo.Context, params api.ListBookingsParams) error {
-	h.log.Info("listing bookings", "user_id", params.UserId)
+	ctx := c.Request().Context()
+	logctx.Add(ctx, logctx.KeyUserID, params.UserId.String())
 
-	bookings, err := h.svc.ListBookings(c.Request().Context(), params.UserId.String())
+	bookings, err := h.svc.ListBookings(ctx, params.UserId.String())
 	if err != nil {
-		h.log.Error("list bookings failed", "user_id", params.UserId, "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
@@ -165,31 +175,30 @@ func (h *BookingHandler) ListBookings(c echo.Context, params api.ListBookingsPar
 		result = append(result, bookingRowToAPI(b))
 	}
 
-	h.log.Info("list bookings completed", "user_id", params.UserId, "count", len(result))
 	return c.JSON(http.StatusOK, result)
 }
 
 func (h *BookingHandler) CancelBooking(c echo.Context, id openapi_types.UUID) error {
-	h.log.Info("cancelling booking", "booking_id", id)
+	ctx := c.Request().Context()
+	logctx.Add(ctx, logctx.KeyBookingID, id.String())
 
-	booking, err := h.svc.CancelBooking(c.Request().Context(), id.String())
+	booking, err := h.svc.CancelBooking(ctx, id.String())
 	if errors.Is(err, service.ErrNotFound) {
-		h.log.Warn("cancel failed: booking not found", "booking_id", id)
+		reject(c, "booking_not_found")
 		return c.JSON(http.StatusNotFound, api.Error{Message: "booking not found"})
 	}
 	if errors.Is(err, service.ErrAlreadyCancelled) {
-		h.log.Warn("cancel failed: already cancelled", "booking_id", id)
+		reject(c, "already_cancelled")
 		return c.JSON(http.StatusConflict, api.Error{Message: "booking already cancelled"})
 	}
 	if err != nil {
 		if isCircuitOpen(c, err) {
 			return nil
 		}
-		h.log.Error("cancel booking failed", "booking_id", id, "error", err)
+		fail(c, err)
 		return c.JSON(http.StatusInternalServerError, api.Error{Message: err.Error()})
 	}
 
-	h.log.Info("booking cancelled", "booking_id", id)
 	return c.JSON(http.StatusOK, bookingRowToAPI(booking))
 }
 
